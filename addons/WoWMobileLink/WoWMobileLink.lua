@@ -13,7 +13,7 @@
 --     records: slot class hp flags x y num nameLen name...
 --       x, y: where the unit's nameplate is on screen, 1-255 left/top to right/bottom (0 = none);
 --       the app clicks there to target exactly that unit (several mobs can share a name)
---       num: 1-255 when several nearby units share the name (also shown on their plates), else 0
+--       num: 1-255 for nearby units (also shown on their plates; 0 for party/arena/BG slots)
 --     CRC-16/CCITT (init 0xFFFF, poly 0x1021) over everything before it, high byte first.
 --   mode: 0 world, 1 dungeon, 2 raid, 3 battleground, 4 arena
 --   slots: 0 player, 1-4 party1-4, 10-19 battleground team, 20-29 battleground
@@ -33,6 +33,8 @@
 local CELLS, BAND, VERSION = 320, 0.004, 3
 local MAX_BYTES = math.floor(CELLS * 3 / 8)
 local INTERVAL = 0.1
+-- How often plate numbers are kept up while the Target page is closed.
+local NUMBER_INTERVAL = 0.25
 
 local CLASS = { WARRIOR=1, PALADIN=2, HUNTER=3, ROGUE=4, PRIEST=5, DEATHKNIGHT=6,
                 SHAMAN=7, MAGE=8, WARLOCK=9, DRUID=10 }
@@ -44,7 +46,7 @@ strip:SetFrameStrata("TOOLTIP")
 strip:SetFrameLevel(1000)
 strip:EnableMouse(false)
 strip:Hide()
-local cells = {}
+local cells, cellValue = {}, {}
 for i = 1, CELLS do
     local t = strip:CreateTexture(nil, "OVERLAY")
     t:SetBlendMode("DISABLE")
@@ -121,25 +123,38 @@ end
 -- shape, not by the border texture, which nameplate addons like TidyPlates remove.)
 local plates, worldChildren = {}, 0
 
--- Returns the plate's name and the FontString it came from.
-local function plateName(f)
-    for _, r in ipairs({ f:GetRegions() }) do
-        if r ~= f.wmlNum and r.GetObjectType and r:GetObjectType() == "FontString" then
-            local text = r:GetText()
-            -- The first FontString is the name; skip the level text ("8", "??").
-            if text and text ~= "" and not text:match("^[%d%?%+]+$") then return text, r end
+-- A plate's FontStrings, collected once per plate frame (its regions don't change), so
+-- the per-update work doesn't build tables (garbage is costly in combat).
+local function plateTexts(f)
+    local texts = f.wmlTexts
+    if not texts then
+        texts = {}
+        for _, r in ipairs({ f:GetRegions() }) do
+            if r.GetObjectType and r:GetObjectType() == "FontString" then texts[#texts + 1] = r end
         end
+        f.wmlTexts = texts
     end
+    return texts
 end
 
--- The plate's level text ("12", "??"), used to tell apart units that share a name.
-local function plateLevel(f)
-    for _, r in ipairs({ f:GetRegions() }) do
-        if r ~= f.wmlNum and r.GetObjectType and r:GetObjectType() == "FontString" then
+-- The plate's name and the FontString it came from, and its level text ("12", "??"),
+-- which helps tell apart units that share a name.
+local function plateNameLevel(f)
+    local name, region, level
+    for _, r in ipairs(plateTexts(f)) do
+        if r ~= f.wmlNum then
             local text = r:GetText()
-            if text and text:match("^[%d%?%+]+$") then return text end
+            if text and text ~= "" then
+                if text:match("^[%d%?%+]+$") then
+                    level = level or text
+                elseif not name then
+                    -- The first non-level FontString is the name.
+                    name, region = text, r
+                end
+            end
         end
     end
+    return name, region, level
 end
 
 -- Units sharing a name get a number, "(1)", "(2)"..., shown left of the name on their
@@ -147,8 +162,8 @@ end
 -- WoW 3.3.5 plates carry no unit id and are reused, so when a plate goes away (camera
 -- turned, out of range) its number is reserved for NUM_HOLD seconds (heldNum); a plate
 -- with that name showing up in that time gets it back. Dead units (health 0) give theirs
--- up at once. nameCount: units on screen or reserved, per name.
-local plateNum, heldNum, nameCount, NUM_HOLD = {}, {}, {}, 20
+-- up at once.
+local plateNum, heldNum, NUM_HOLD = {}, {}, 20
 
 local function showNumber(f, nameRegion, num)
     if num == 0 then
@@ -157,18 +172,28 @@ local function showNumber(f, nameRegion, num)
     end
     -- NotPlater hides the plate's own name and shows its copy in f.nameText.
     local anchor = (f.nameText and f.nameText.IsShown and f.nameText:IsShown() and f.nameText) or nameRegion
-    if not f.wmlNum then f.wmlNum = f:CreateFontString(nil, "OVERLAY") end
     local label = f.wmlNum
+    if not label then
+        label = f:CreateFontString(nil, "OVERLAY")
+        label:SetTextColor(1, 0.82, 0)
+        f.wmlNum = label
+    end
     if label.anchor ~= anchor then
         label.anchor = anchor
         label:ClearAllPoints()
         label:SetPoint("RIGHT", anchor, "LEFT", -2, 0)
     end
+    -- Only touch the label when something changed.
     local font, size, outline = anchor:GetFont()
-    if font then label:SetFont(font, size, outline) end
-    label:SetTextColor(1, 0.82, 0)
-    label:SetText("(" .. num .. ")")
-    label:Show()
+    if font and (font ~= label.font or size ~= label.size or outline ~= label.outline) then
+        label.font, label.size, label.outline = font, size, outline
+        label:SetFont(font, size, outline)
+    end
+    if label.num ~= num then
+        label.num = num
+        label:SetText("(" .. num .. ")")
+    end
+    if not label:IsShown() then label:Show() end
 end
 
 
@@ -223,7 +248,7 @@ local function platesShown()
     for f in pairs(plates) do
         if f:IsShown() then
             local bar = f:GetChildren()
-            local name, nameRegion = plateName(f)
+            local name, nameRegion, level = plateNameLevel(f)
             if bar and bar.GetValue and name then
                 local lo, hi = bar:GetMinMaxValues()
                 local hp = hi and hi > lo and math.floor((bar:GetValue() - lo) / (hi - lo) * 100 + 0.5) or 255
@@ -236,7 +261,7 @@ local function platesShown()
                     px = math.max(1, math.min(255, math.floor(cx * scale / UIParent:GetWidth() * 255 + 0.5)))
                     py = math.max(1, math.min(255, math.floor((1 - cy * scale / UIParent:GetHeight()) * 255 + 0.5)))
                 end
-                found[#found + 1] = { frame = f, nameRegion = nameRegion, level = plateLevel(f), name = name, hp = hp, class = cls, flags = flags, y = f:GetBottom() or 0, px = px, py = py }
+                found[#found + 1] = { frame = f, nameRegion = nameRegion, level = level, name = name, hp = hp, class = cls, flags = flags, y = f:GetBottom() or 0, px = px, py = py }
             elseif f.wmlNum then
                 f.wmlNum:Hide()
             end
@@ -296,11 +321,9 @@ local function platesShown()
         r.n = keep[r.frame].n
     end
     plateNum = keep
-    -- Show the number when more than one unit on screen has the name.
-    nameCount = {}
-    for _, r in ipairs(found) do nameCount[r.name] = (nameCount[r.name] or 0) + 1 end
+    -- Every unit shows its number, starting at (1).
     for _, r in ipairs(found) do
-        r.num = nameCount[r.name] > 1 and math.min(r.n, 255) or 0
+        r.num = math.min(r.n, 255)
         showNumber(r.frame, r.nameRegion, r.num)
     end
     return found, targetName
@@ -593,7 +616,11 @@ local function draw()
             bitsLeft = bitsLeft - 1
             v = v * 2 + (math.floor(acc / 2 ^ bitsLeft) % 2)
         end
-        cells[i]:SetTexture(v % 2, math.floor(v / 2) % 2, math.floor(v / 4) % 2, 1)
+        -- Only cells whose colour changed (hundreds of SetTexture calls per update add up).
+        if cellValue[i] ~= v then
+            cellValue[i] = v
+            cells[i]:SetTexture(v % 2, math.floor(v / 2) % 2, math.floor(v / 4) % 2, 1)
+        end
     end
 end
 
@@ -621,7 +648,7 @@ end
 local numberer, sinceNumbers = CreateFrame("Frame"), 0
 numberer:SetScript("OnUpdate", function(_, elapsed)
     sinceNumbers = sinceNumbers + elapsed
-    if active or sinceNumbers < INTERVAL then return end
+    if active or sinceNumbers < NUMBER_INTERVAL then return end
     sinceNumbers = 0
     platesShown()
 end)

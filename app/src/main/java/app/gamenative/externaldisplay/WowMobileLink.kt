@@ -136,6 +136,9 @@ class WowMobileLinkReader(private val xServer: XServer) {
         return gameWindow
     }
 
+    /** Which GPU row (flipped or not) and colour order held the data last time. */
+    @Volatile private var way: Pair<Boolean, Boolean>? = null
+
     private var lastLog = 0L
     private fun log(msg: String) {
         val now = System.currentTimeMillis()
@@ -154,40 +157,33 @@ class WowMobileLinkReader(private val xServer: XServer) {
         // The band is the bottom 0.4% of the window; sample its middle row.
         val y = h - 1 - (h * 0.002f).toInt().coerceAtLeast(1)
         // On the Vulkan path the CPU-side copy isn't kept up to date, so read the GPU texture the
-        // screen shows (rows from both ends, in case it's stored flipped); the CPU copy is a fallback.
-        var px = ByteArray(0)
-        var result: Pair<Int, List<LinkUnit>>? = null
-        for (row in intArrayOf(y, h - 1 - y)) {
-            px = readGpuRow(drawable, row) ?: continue
-            result = decode(px, w, redFirst = true) ?: decode(px, w, redFirst = false)
-            if (result != null) break
+        // screen shows. Each GPU read stalls the GPU for a moment, so once a row and colour
+        // order have worked, only that one is read; the CPU copy is a fallback.
+        val known = way
+        if (known != null) {
+            val (flipped, redFirst) = known
+            val px = readGpuRow(drawable, if (flipped) h - 1 - y else y)
+            val result = px?.let { decode(it, w, redFirst) }
+            if (result != null) return result
+            way = null
         }
-        if (result == null) {
-            val cpu = drawable.getImage(0, y.toShort(), w.toShort(), 1).order(ByteOrder.LITTLE_ENDIAN)
-            px = ByteArray(w * 4)
-            cpu.get(px)
-            result = decode(px, w, redFirst = false) ?: decode(px, w, redFirst = true)
-        }
-        if (result == null) gameWindow = null
-        if (result == null && System.currentTimeMillis() - lastLog >= 3000) {
-            lastLog = System.currentTimeMillis()
-            fun cells(bytes: ByteArray?) = bytes?.let { b -> (0 until 4).joinToString(" ") { i ->
-                val x = ((i + 0.5f) * w / CELLS).toInt() * 4
-                "%02x%02x%02x".format(b[x], b[x + 1], b[x + 2])
-            } } ?: "null"
-            // Pure on/off colours across the row = the strip is there.
-            fun stripLike(bytes: ByteArray?): Int = bytes?.let { b -> (0 until CELLS).count { i ->
-                val x = ((i + 0.5f) * w / CELLS).toInt() * 4
-                (0 until 3).all { c -> val v = b[x + c].toInt() and 0xFF; v < 30 || v > 225 } &&
-                    (0 until 3).any { c -> (b[x + c].toInt() and 0xFF) > 225 }
-            } } ?: -1
-            val sb = StringBuilder("window '${window.className}' ${w}x$h; gpu mid ${cells(readGpuRow(drawable, h / 2))}\n")
-            for (r in (h - 12) until h) {
-                val g = readGpuRow(drawable, r)
-                val c = ByteArray(w * 4).also { arr -> drawable.getImage(0, r.toShort(), w.toShort(), 1).get(arr) }
-                sb.append("row $r gpu[${stripLike(g)}] ${cells(g)} | cpu[${stripLike(c)}] ${cells(c)}\n")
+        for (flipped in booleanArrayOf(false, true)) {
+            val px = readGpuRow(drawable, if (flipped) h - 1 - y else y) ?: continue
+            for (redFirst in booleanArrayOf(true, false)) {
+                val result = decode(px, w, redFirst)
+                if (result != null) {
+                    way = flipped to redFirst
+                    return result
+                }
             }
-            android.util.Log.i("WowMobileLink", sb.toString())
+        }
+        val cpu = drawable.getImage(0, y.toShort(), w.toShort(), 1).order(ByteOrder.LITTLE_ENDIAN)
+        val px = ByteArray(w * 4)
+        cpu.get(px)
+        val result = decode(px, w, redFirst = false) ?: decode(px, w, redFirst = true)
+        if (result == null) {
+            gameWindow = null
+            log("no data row in window '${window.className}' ${w}x$h")
         }
         return result
     }

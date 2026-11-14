@@ -16,11 +16,16 @@ class GlueScreenWatcher(private val reader: WowMobileLinkReader) {
 
     private enum class Anchor { LEFT, CENTER, RIGHT }
     private class Spot(val anchor: Anchor, val dx: Int, val y: Int)
-    private class Look(val screen: Screen, val spots: List<Spot>, val needed: Int, val matches: (Int, Int, Int) -> Boolean)
+    /** [probeY]: the row with most of the screen's buttons, checked first. */
+    private class Look(val screen: Screen, val spots: List<Spot>, val needed: Int, val probeY: Int, val matches: (Int, Int, Int) -> Boolean)
 
     companion object {
         private const val TAG = "GlueScreen"
         private const val POLL_MS = 1000L
+        private const val SLOW_POLL_MS = 4000L
+        /** Looks in a row without a login / character screen before slowing down (~20 s). */
+        private const val IN_WORLD_AFTER = 20
+        private val ALL_WAYS = listOf(false to true, false to false, true to true, true to false)
 
         // Measured on the 3.3.5 screens at 1920x1080.
         private val LOOKS = listOf(
@@ -31,7 +36,7 @@ class GlueScreenWatcher(private val reader: WowMobileLinkReader) {
                 Spot(Anchor.RIGHT, -190, 695), Spot(Anchor.RIGHT, -35, 695),   // Options
                 Spot(Anchor.RIGHT, -190, 746),                                  // Cinematics
                 Spot(Anchor.RIGHT, -190, 1014), Spot(Anchor.RIGHT, -35, 1014), // Quit
-            ), 6) { r, g, b -> r in 15..75 && g in 55..115 && b in 105..175 && b > g && g > r },
+            ), 6, 810) { r, g, b -> r in 15..75 && g in 55..115 && b in 105..175 && b > g && g > r },
             // Character select: red buttons, fill about rgb 100, 17, 9 on screen (about 108, 2, 1
             // in the game's own picture, which is what is read).
             Look(Screen.CHARACTER_SELECT, listOf(
@@ -41,7 +46,7 @@ class GlueScreenWatcher(private val reader: WowMobileLinkReader) {
                 Spot(Anchor.RIGHT, -160, 1022), Spot(Anchor.RIGHT, -65, 1022), // Back
                 Spot(Anchor.RIGHT, -288, 872), Spot(Anchor.RIGHT, -95, 872),   // Create New Character
                 Spot(Anchor.RIGHT, -265, 74), Spot(Anchor.RIGHT, -115, 74),    // Change Realm
-            ), 9) { r, g, b -> r in 75..190 && g in 0..50 && b in 0..35 && r > 2 * g && g >= b },
+            ), 9, 1022) { r, g, b -> r in 75..190 && g in 0..50 && b in 0..35 && r > 2 * g && g >= b },
         )
     }
 
@@ -53,7 +58,6 @@ class GlueScreenWatcher(private val reader: WowMobileLinkReader) {
         private set
 
     @Volatile private var running = false
-    private var debugPolls = 0
 
     fun start() {
         if (running) return
@@ -66,7 +70,10 @@ class GlueScreenWatcher(private val reader: WowMobileLinkReader) {
                     current = seen
                     streak = 1
                 } else streak++
-                try { Thread.sleep(POLL_MS) } catch (_: InterruptedException) { break }
+                // In the world (no login / character screen for a while), look less often:
+                // every look reads pixels back from the GPU, which stalls its work for a moment.
+                val wait = if (current == Screen.NONE && streak > IN_WORLD_AFTER) SLOW_POLL_MS else POLL_MS
+                try { Thread.sleep(wait) } catch (_: InterruptedException) { break }
             }
         }, "GlueScreenWatcher").apply { isDaemon = true; start() }
     }
@@ -85,44 +92,39 @@ class GlueScreenWatcher(private val reader: WowMobileLinkReader) {
         val h = drawable.height.toInt()
         if (w < 320 || h < 240) return Screen.NONE
         val scale = h / 1080f
-        // The texture may be stored upside down, and red/blue may be swapped: try each way.
-        for (flipped in listOf(false, true)) {
+        // The texture may be stored upside down, and red/blue may be swapped. Once a screen
+        // has been recognised the way is known, and only that way is tried from then on.
+        val ways = orientation?.let { listOf(it) } ?: ALL_WAYS
+        for ((flipped, redFirst) in ways) {
             val rows = HashMap<Int, ByteArray?>()
-            fun pixel(x: Int, y: Int): ByteArray? {
+            fun hits(look: Look, spots: List<Spot>): Int = spots.count { s ->
+                val x = when (s.anchor) {
+                    Anchor.LEFT -> s.dx * scale
+                    Anchor.CENTER -> w / 2f + s.dx * scale
+                    Anchor.RIGHT -> w + s.dx * scale
+                }.toInt().coerceIn(0, w - 1)
+                val y = (s.y * scale).toInt().coerceIn(0, h - 1)
                 val row = if (flipped) h - 1 - y else y
-                val bytes = rows.getOrPut(row) { reader.readGpuRow(drawable, row) } ?: return null
-                return if (x * 4 + 2 < bytes.size) bytes.copyOfRange(x * 4, x * 4 + 3) else null
+                val bytes = rows.getOrPut(row) { reader.readGpuRow(drawable, row) } ?: return@count false
+                if (x * 4 + 2 >= bytes.size) return@count false
+                val r = (if (redFirst) bytes[x * 4] else bytes[x * 4 + 2]).toInt() and 0xFF
+                val g = bytes[x * 4 + 1].toInt() and 0xFF
+                val b = (if (redFirst) bytes[x * 4 + 2] else bytes[x * 4]).toInt() and 0xFF
+                look.matches(r, g, b)
             }
-            for (redFirst in listOf(true, false)) {
-                for (look in LOOKS) {
-                    val hits = look.spots.count { s ->
-                        val x = when (s.anchor) {
-                            Anchor.LEFT -> s.dx * scale
-                            Anchor.CENTER -> w / 2f + s.dx * scale
-                            Anchor.RIGHT -> w + s.dx * scale
-                        }.toInt().coerceIn(0, w - 1)
-                        val p = pixel(x, (s.y * scale).toInt().coerceIn(0, h - 1)) ?: return@count false
-                        val r = (if (redFirst) p[0] else p[2]).toInt() and 0xFF
-                        val g = p[1].toInt() and 0xFF
-                        val b = (if (redFirst) p[2] else p[0]).toInt() and 0xFF
-                        look.matches(r, g, b)
-                    }
-                    if (hits >= look.needed) return look.screen
-                    if (debugPolls % 60 == 0 && !flipped && redFirst) {
-                        Log.i(TAG, "${look.screen}: $hits/${look.spots.size} hits in ${w}x$h; " + look.spots.joinToString(" ") { s ->
-                            val x = when (s.anchor) {
-                                Anchor.LEFT -> s.dx * scale
-                                Anchor.CENTER -> w / 2f + s.dx * scale
-                                Anchor.RIGHT -> w + s.dx * scale
-                            }.toInt().coerceIn(0, w - 1)
-                            val y = (s.y * scale).toInt().coerceIn(0, h - 1)
-                            "($x,$y)=" + (pixel(x, y)?.joinToString(",") { (it.toInt() and 0xFF).toString() } ?: "null")
-                        })
-                    }
+            for (look in LOOKS) {
+                // One row first (a single GPU read); the other rows only if that one matches.
+                val probe = look.spots.filter { it.y == look.probeY }
+                if (hits(look, probe) < probe.size - 1) continue
+                if (hits(look, look.spots) >= look.needed) {
+                    orientation = flipped to redFirst
+                    return look.screen
                 }
             }
         }
-        debugPolls++
         return Screen.NONE
     }
+
+    /** How the game's picture is stored (flipped, red first), once seen. */
+    @Volatile private var orientation: Pair<Boolean, Boolean>? = null
 }
