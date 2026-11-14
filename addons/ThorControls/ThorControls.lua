@@ -50,8 +50,18 @@ local FRESH_SETTINGS = {
     disableCvarReset = true, UIdropDownFix = true,
 }
 -- Set when ConsolePort made new settings on this login (and opened its setup screen):
--- they're replaced with the Thor layout and the UI is reloaded once at login.
+-- they're replaced with the Thor layout, which takes effect after a UI reload. WoW only
+-- lets an addon reload the UI from a button press, so a popup asks for it.
 local freshSetup
+
+StaticPopupDialogs["THORCONTROLS_RELOAD"] = {
+    text = "Thor Controls: one-time controller setup for this account. Reload the UI to finish.",
+    button1 = RELOADUI or "Reload UI",
+    OnAccept = function() ReloadUI() end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = false,
+}
 local MODIFIERS = { "", "SHIFT-", "CTRL-", "CTRL-SHIFT-" }
 
 -- Default controller bindings for characters that have none yet (see README).
@@ -760,10 +770,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
         if freshSetup then
             freshSetup = nil
             if ConsolePortSplashFrame then ConsolePortSplashFrame:Hide() end
-            -- The settings above (and the calibration) take effect on the reload.
-            msg("Setting up the controller for this account; reloading the UI.")
-            ReloadUI()
-            return
+            StaticPopup_Show("THORCONTROLS_RELOAD")
         end
         if triggersRemoved and not InCombatLockdown() then
             triggersRemoved = nil
