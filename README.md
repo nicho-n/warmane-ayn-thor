@@ -6,6 +6,8 @@
   If you like the app, please consider <a href="https://buymeacoffee.com/nichon">buying me a coffee</a>.
 </p>
 
+---
+
 An Android launcher for playing [Warmane](https://www.warmane.com) (World of Warcraft
 3.3.5a) on the AYN Thor. It installs as *Warmane Ayn Thor Launcher*.
 
