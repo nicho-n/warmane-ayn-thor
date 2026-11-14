@@ -67,6 +67,7 @@
 
                 <Button
                     android:id="@+id/BTSelectFolder"
+                    android:foreground="@drawable/focus_border"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
@@ -75,6 +76,7 @@
 
             <Button
                 android:id="@+id/BTPlay"
+                    android:foreground="@drawable/focus_border"
                 android:layout_width="match_parent"
                 android:layout_height="72dp"
                 android:layout_marginTop="24dp"
@@ -91,6 +93,7 @@
 
                 <Button
                     android:id="@+id/BTWowSettings"
+                    android:foreground="@drawable/focus_border"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -99,6 +102,7 @@
 
                 <Button
                     android:id="@+id/BTDonate"
+                    android:foreground="@drawable/focus_border"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -113,6 +117,7 @@
 
                 <Button
                     android:id="@+id/BTAdvanced"
+                    android:foreground="@drawable/focus_border"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     style="?android:attr/borderlessButtonStyle"
@@ -121,6 +126,7 @@
 
                 <Button
                     android:id="@+id/BTContainerSettings"
+                    android:foreground="@drawable/focus_border"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="16dp"

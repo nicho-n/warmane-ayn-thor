@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Border on the button a controller has focused (D-pad / left stick), see wow_main_activity. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <stroke android:width="4dp" android:color="#FFD24A"/>
+            <corners android:radius="4dp"/>
+        </shape>
+    </item>
+    <item>
+        <color android:color="@android:color/transparent"/>
+    </item>
+</selector>

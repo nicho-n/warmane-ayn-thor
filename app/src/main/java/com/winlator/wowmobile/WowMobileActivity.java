@@ -90,20 +90,28 @@ public class WowMobileActivity extends AppCompatActivity {
     }
 
     /**
-     * Controller: A (bottom face button) presses Play, unless the D-pad has moved focus to
-     * another button, which A then presses as usual. Start always presses Play.
+     * Controller: the D-pad / left stick move the focus border (focus_border) between the
+     * buttons, A presses the focused one (Play when nothing else is focused), Start always
+     * presses Play.
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         int code = event.getKeyCode();
+        if (code != KeyEvent.KEYCODE_BUTTON_A && code != KeyEvent.KEYCODE_BUTTON_START) return super.dispatchKeyEvent(event);
+        boolean up = event.getAction() == KeyEvent.ACTION_UP && event.getRepeatCount() == 0;
         View focus = getCurrentFocus();
-        boolean play = code == KeyEvent.KEYCODE_BUTTON_START ||
-            (code == KeyEvent.KEYCODE_BUTTON_A && (focus == null || focus == btPlay || !(focus instanceof Button)));
-        if (play) {
-            if (event.getAction() == KeyEvent.ACTION_UP && event.getRepeatCount() == 0 && btPlay.isEnabled() && !preloaderDialog.isShowing()) onPlay();
+        if (code == KeyEvent.KEYCODE_BUTTON_A && focus instanceof Button && focus != btPlay) {
+            if (up) focus.performClick();
             return true;
         }
-        return super.dispatchKeyEvent(event);
+        if (up && btPlay.isEnabled() && !preloaderDialog.isShowing()) onPlay();
+        return true;
+    }
+
+    /** Shows the focus border on Play, so it's clear A starts the game. */
+    private void focusPlay() {
+        if (btPlay.isEnabled()) btPlay.requestFocusFromTouch();
+        else findViewById(R.id.BTSelectFolder).requestFocusFromTouch();
     }
 
     private boolean requestAppPermissions() {
@@ -119,6 +127,7 @@ public class WowMobileActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         updateStatus();
+        focusPlay();
         // Pick up phase-B provisioning after the guided first login + logout
         GameFolder gameFolder = getGameFolder();
         if (gameFolder != null && gameFolder.isValid()) {
