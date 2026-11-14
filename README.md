@@ -6,6 +6,8 @@ An Android launcher for playing [Warmane](https://www.warmane.com) (World of War
 This is a fork of [WoW Mobile](https://github.com/marcocastignoli/wow-mobile), and uses the
 touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabuntjer/AYN-Thor-WoW-Launcher).
 
+**[Download here](https://github.com/nicho-n/warmane-ayn-thor/releases/latest/download/warmane-ayn-thor.apk)**
+
 ## Features
 
 - **Touch targeting:** a page on the bottom screen lists nearby units; tap one to target it.
@@ -54,7 +56,7 @@ set of action bar buttons. Other buttons:
 
 ## Setup
 
-1. Install the APK from [Releases](../../releases), or build it (see below).
+1. Install the APK ([download](https://github.com/nicho-n/warmane-ayn-thor/releases/latest/download/warmane-ayn-thor.apk)), or build it (see below).
 2. Open the app and pick the folder that contains `Wow.exe`. The app lists the addons it
    will install and, if you continue, first zips your `Interface/AddOns` folder into the
    game folder as `AddOns-backup-<date>.zip`.
