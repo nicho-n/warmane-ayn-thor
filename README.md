@@ -29,10 +29,6 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 - **Opinionated console controls:** a remappable ConsolePort controller layout, plus **A** to
   play, enter the world and log in, and the **D-pad** to pick a character.
 
-Also: an Update button next to Play when a new version is out (with what's new), optional
-auto-login (password encrypted on the device), an optional touch-controls overlay on the
-game screen, and Box64 0.4.5, which Warmane accepts.
-
 ## Default controller layout
 
 Characters that don't have ConsolePort bindings yet start with this layout. Change it in
@@ -94,8 +90,7 @@ The app installs these. Only their own folders are replaced; other addons are le
 | NotPlater | If missing | Nameplates. Required for touch targeting. |
 
 `ThorControls` and `WoWMobileLink` are updated on Play when the app has a newer version.
-Your ConsolePort bindings are kept. If WoW Imito's addons are installed, they're moved to
-`Interface/AddOns-disabled`.
+Your ConsolePort bindings are kept.
 
 ## Building
 
