@@ -30,17 +30,15 @@ set of action bar buttons. Other buttons:
 | A / B / X / Y | Action bar |
 | D-pad | Action bar |
 | L1 | Target nearest enemy |
-| L1 + R2 | Minimap zoom in |
 | R1 | Jump |
 | Select | Target nearest friend |
 | Select + L2 | World map |
-| Select + R2 | Camera zoom out |
-| Select + L2 + R2 | Camera zoom in |
 | Start | Interact with the unit under the pointer |
 | Start + L2 | Game menu |
 | Start + R2 | Raid cursor |
 | Start + L2 + R2 | Open chat |
-| D-pad up / down + L2 | Camera zoom in / out |
+| D-pad up + L2 | Camera zoom in |
+| D-pad down + L2 | Camera zoom out |
 | D-pad right | Run/walk |
 | B + L2 + R2 | Open all bags |
 | A + L2 + R2 | Utility ring |
