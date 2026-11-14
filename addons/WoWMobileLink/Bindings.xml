@@ -1,0 +1,4 @@
+<Bindings>
+<Binding name="WOWMOBILELINK_ON" hidden="true">WoWMobileLink_SetActive(true)</Binding>
+<Binding name="WOWMOBILELINK_OFF" hidden="true">WoWMobileLink_SetActive(false)</Binding>
+</Bindings>
