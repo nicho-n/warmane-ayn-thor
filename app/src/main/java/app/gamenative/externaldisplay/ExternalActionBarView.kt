@@ -485,6 +485,8 @@ class ExternalActionBarView(
                     page("Achievements", XKeycode.KEY_Y),
                     // ThorControls' key for the PvP window's Battlegrounds tab.
                     page("Battlegrounds", XKeycode.KEY_V, XKeycode.KEY_CTRL_L, XKeycode.KEY_ALT_L, XKeycode.KEY_SHIFT_L),
+                    // ThorControls' key for leaving the party or raid.
+                    page("Leave Party", XKeycode.KEY_L, XKeycode.KEY_ALT_L, XKeycode.KEY_SHIFT_L),
                     page("Professions", XKeycode.KEY_K),
                     page("Bags", XKeycode.KEY_B),
                     // Escape opens the game menu ("System") when nothing else is open.

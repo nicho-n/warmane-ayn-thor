@@ -11,6 +11,8 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.graphics.drawable.GradientDrawable
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.winlator.xserver.XKeycode
@@ -21,7 +23,8 @@ import com.winlator.xserver.XServer
  * the WoWMobileLink addon (see [LinkState]) as boxes with class colour, health bar and name.
  * Tapping a box targets that unit by typing /target.
  *
- * Mode follows where you are (Auto), or a tab picks it by hand.
+ * The top row: Mode (opens a list of the targeting modes), then Invite, Thank, Sorry, Bags
+ * and Map.
  */
 @SuppressLint("ViewConstructor")
 class TargetFramesView(
@@ -33,12 +36,26 @@ class TargetFramesView(
 ) : LinearLayout(context) {
 
     // Saved by ordinal, so new modes go at the end; TAB_ORDER sets the order on screen.
-    private enum class Mode(val label: String) { AUTO("Auto"), NEARBY("Nearby"), DUNGEON("Party"), BATTLEGROUND("BG All"), ARENA("Arena"), FRIENDLY("NPC"), BG_TEAM("BG Team") }
+    private enum class Mode(val label: String) { AUTO("Auto"), NEARBY("Nearby"), DUNGEON("Party"), BATTLEGROUND("BG All"), ARENA("Arena"), FRIENDLY("Friendly NPC"), BG_TEAM("BG Team") }
     // AUTO is no longer offered (kept so saved ordinals still line up); a saved AUTO opens Nearby.
-    private val TAB_ORDER = listOf(Mode.NEARBY, Mode.FRIENDLY, Mode.DUNGEON, Mode.BG_TEAM, Mode.BATTLEGROUND, Mode.ARENA)
+    private val TAB_ORDER = listOf(Mode.NEARBY, Mode.DUNGEON, Mode.BG_TEAM, Mode.BATTLEGROUND, Mode.ARENA, Mode.FRIENDLY)
 
     private var chosen = Mode.values().getOrElse(PadSettings.int(KEY_MODE)) { Mode.NEARBY }.let { if (it == Mode.AUTO) Mode.NEARBY else it }
     private val tabs = mutableMapOf<Mode, TextView>()
+    private lateinit var modeButton: TextView
+    private val actionPills = mutableListOf<TextView>()
+    /** The list of modes, shown over the boxes under the Mode button. */
+    private val modeMenu = LinearLayout(context).apply {
+        orientation = VERTICAL
+        visibility = GONE
+        isClickable = true
+        setPadding(dp(3), dp(3), dp(3), dp(3))
+        background = GradientDrawable().apply {
+            setColor(theme.background)
+            cornerRadius = dp(10).toFloat()
+            setStroke(dp(1), theme.border)
+        }
+    }
     private val status: TextView
     private val body = LinearLayout(context).apply {
         orientation = HORIZONTAL
@@ -58,14 +75,35 @@ class TargetFramesView(
         isMotionEventSplittingEnabled = true
         val tabRow = LinearLayout(context).apply {
             orientation = HORIZONTAL
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(52))
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(39))
         }
-        TAB_ORDER.forEach { m ->
-            val t = pill(m.label) { chosen = m; PadSettings.set(KEY_MODE, m.ordinal); refresh() }
-            tabs[m] = t
+        modeButton = pill("Mode") {
+            modeMenu.visibility = if (modeMenu.visibility == VISIBLE) GONE else VISIBLE
+            refresh()
+        }.apply { (layoutParams as LayoutParams).weight = 1.6f }
+        tabRow.addView(modeButton)
+        listOf<Pair<String, () -> Unit>>(
+            "Invite" to { slash("/invite") },
+            "Thank" to { slash("/thank") },
+            "Sorry" to { slash("/sorry") },
+            "Map" to { key(XKeycode.KEY_M) },
+            "Bags" to { key(XKeycode.KEY_B) },
+        ).forEach { (label, action) ->
+            val t = pill(label, action).apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f) }
+            actionPills += t
             tabRow.addView(t)
         }
         addView(tabRow)
+        TAB_ORDER.forEach { m ->
+            val t = pill(m.label) {
+                chosen = m
+                PadSettings.set(KEY_MODE, m.ordinal)
+                modeMenu.visibility = GONE
+                refresh()
+            }.apply { layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(52)).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) } }
+            tabs[m] = t
+            modeMenu.addView(t)
+        }
         status = TextView(context).apply {
             setTextColor(theme.text)
             alpha = 0.7f
@@ -74,7 +112,11 @@ class TargetFramesView(
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         }
         addView(status)
-        addView(body)
+        val area = FrameLayout(context).apply { layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f) }
+        body.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        area.addView(body)
+        area.addView(modeMenu, FrameLayout.LayoutParams(dp(220), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START).apply { setMargins(dp(3), 0, 0, 0) })
+        addView(area)
         refresh()
     }
 
@@ -92,7 +134,18 @@ class TargetFramesView(
 
     private fun refresh() {
         val mode = chosen
-        tabs.forEach { (m, t) -> stylePill(t, m == chosen, false) }
+        // In the mode list only the chosen mode has the gold trim; the rest dark grey.
+        tabs.forEach { (m, t) ->
+            if (m == chosen) stylePill(t, true, false)
+            else {
+                t.background = theme.buttonBackground(resources.displayMetrics.density, 10f, false, accent = MENU_GREY)
+                t.setTextColor(theme.text)
+                t.alpha = 1f
+            }
+        }
+        modeButton.text = mode.label
+        stylePill(modeButton, modeMenu.visibility == VISIBLE, true)
+        actionPills.forEach { stylePill(it, false, true) }
         val receiving = System.currentTimeMillis() - LinkState.lastPacketAt < 2000
         status.text = if (receiving) "" else "Waiting for the WoW Mobile Link addon…"
         status.visibility = if (receiving) GONE else VISIBLE
@@ -104,12 +157,17 @@ class TargetFramesView(
             // Placeholder slots: placeNearby() puts units in the boxes.
             Mode.NEARBY -> nearbyRows().let { r -> listOf(List(r) { -1 }, List(r) { -1 }) }
             Mode.FRIENDLY -> listOf((50..54).toList(), (55..59).toList())
-            Mode.ARENA -> listOf((0..4).toList(), (30..34).toList())
+            // 2v2, 3v3 or 5v5 by how many are in the match (2v2 until more show up).
+            Mode.ARENA -> arenaSize().let { n -> listOf((0 until n).toList(), (30 until 30 + n).toList()) }
             // 15 per side: team 10-19 then 90-94, enemies 20-29 then 95-99.
             Mode.BG_TEAM -> listOf((10..14) + (90..92), (15..19) + (93..94))
             Mode.BATTLEGROUND -> listOf((10..19) + (90..94), (20..29) + (95..99))
         }
-        val key = if (mode == Mode.NEARBY) "NEARBY-${nearbyRows()}" else mode.name
+        val key = when (mode) {
+            Mode.NEARBY -> "NEARBY-${nearbyRows()}"
+            Mode.ARENA -> "ARENA-${arenaSize()}"
+            else -> mode.name
+        }
         if (builtFor != key) {
             builtFor = key
             body.removeAllViews()
@@ -174,6 +232,16 @@ class TargetFramesView(
                 }
             }
         }
+    }
+
+    /** Most players seen on one side during this arena match, so the layout doesn't shrink back. */
+    private var arenaMost = 0
+
+    /** Arena bracket from the players seen on either side (you and party1-4, arena1-5): 2, 3 or 5. */
+    private fun arenaSize(): Int {
+        var most = maxOf((0..4).count { LinkState.unit(it) != null }, (30..34).count { LinkState.unit(it) != null })
+        if (LinkState.mode == LinkState.MODE_ARENA) { arenaMost = maxOf(arenaMost, most); most = arenaMost } else arenaMost = 0
+        return when { most <= 2 -> 2; most == 3 -> 3; else -> 5 }
     }
 
     /** Nearby rows per column: enough for the larger of the two maximums, 5 to 10. */
@@ -322,15 +390,10 @@ class TargetFramesView(
             canvas.clipRect(0f, 0f, width * frac, height.toFloat())
             canvas.drawRoundRect(rect, r, r, fill)
             canvas.restore()
-            // Border: gold for your target; players red (enemy) or green (friendly).
+            // Border: yellow for your target, black for the rest.
             fill.style = Paint.Style.STROKE
-            val playerEdge = isPlayer && u.flags and (8 or 32) != 0
-            fill.strokeWidth = dp(if (u.isTarget || playerEdge) 3 else 1).toFloat()
-            fill.color = when {
-                u.isTarget -> Color.rgb(255, 209, 0)
-                playerEdge -> if (enemy) Color.rgb(230, 30, 30) else Color.rgb(40, 220, 40)
-                else -> Color.argb(90, 255, 255, 255)
-            }
+            fill.strokeWidth = dp(if (u.isTarget) 5 else 2).toFloat()
+            fill.color = if (u.isTarget) Color.rgb(255, 209, 0) else Color.BLACK
             canvas.drawRoundRect(rect, r, r, fill)
             // Health right, name left in the space that's left: shrinks to fit, then "…".
             val hpText = when { u.dead -> "Dead"; u.hpKnown -> "${u.hp}%"; else -> "" }
@@ -387,10 +450,23 @@ class TargetFramesView(
         t.alpha = if (auto || on) 1f else 0.85f
     }
 
+    private fun slash(command: String) = SlashTyper.type(xServer, command, onSuspendModifiers, onResumeModifiers)
+
+    /** Taps a key (WoW's default B = bags, M = map) with any held modifiers let go for the moment. */
+    private fun key(k: XKeycode) {
+        val mods = onSuspendModifiers()
+        PadBridge.controllerModifierHold?.invoke(true)
+        xServer.injectKeyPress(k)
+        xServer.injectKeyRelease(k)
+        PadBridge.controllerModifierHold?.invoke(false)
+        onResumeModifiers(mods)
+    }
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     companion object {
         private const val KEY_MODE = "target_mode"
+        private const val MENU_GREY = 0xFF4A4A4A.toInt()
         private const val PLATE_HOVER_MS = 80L
         /** Nearby slots (50-59 are the NPC tab, which repeats friendly NPCs). */
         private val NEARBY_SLOTS = (40..49) + (60..89)

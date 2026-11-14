@@ -733,12 +733,14 @@ class ExternalActionPad(
         // Lets the controller's A / B cursor clicks release armed modifiers too.
         PadBridge.releaseModifiers = { releaseModifiers() }
         PadBridge.triggerModifiersChanged = { triggerModifiersChanged() }
+        XpBarSync.typer = { command -> SlashTyper.type(xServer, command, { suspendModifiers() }, { resumeModifiers(it) }) }
         triggerModifiersChanged()
     }
 
     override fun onDetachedFromWindow() {
         PadBridge.releaseModifiers = null
         PadBridge.triggerModifiersChanged = null
+        XpBarSync.typer = null
         heldModifiers.toList().forEach { xServer.injectKeyRelease(it) }
         heldModifiers.clear()
         lockedModifiers.clear()

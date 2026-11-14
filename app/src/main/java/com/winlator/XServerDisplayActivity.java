@@ -676,6 +676,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (consolePortController != null && gamePath != null) {
             File addOns = new com.winlator.wowmobile.GameFolder(gamePath).getAddOnsDir();
             consolePortController.setCameraKey(new File(addOns, "ThorControls/ThorControls.toc").isFile());
+            // The XP bar settings, for ThorControls to read when the game loads its UI.
+            app.gamenative.externaldisplay.XpBarSync.INSTANCE.setAddOnsDir(addOns);
+            app.gamenative.externaldisplay.XpBarSync.INSTANCE.write();
         }
         if (com.winlator.wowmobile.LoginSecret.isEnabled(this)) {
             String password = com.winlator.wowmobile.LoginSecret.load(this);

@@ -74,6 +74,14 @@ object PadSettings {
     /** 0 = tab bar at the top, 1 = at the bottom. */
     const val TAB_POS = "tab_pos"
     /** Target page: whether Nearby also lists friendly NPCs (off) and friendly players (on). */
+    /** XP bar (ThorControls addon, see XpBarSync): shown, numbers on it, width (% of D-pad Left to A), height, offsets. */
+    const val XP_SHOW = "xp_show"
+    const val XP_TEXT = "xp_text"
+    const val XP_WIDTH = "xp_width"
+    const val XP_HEIGHT = "xp_height"
+    const val XP_X = "xp_x"
+    const val XP_Y = "xp_y"
+    val XP_KEYS = setOf(XP_SHOW, XP_TEXT, XP_WIDTH, XP_HEIGHT, XP_X, XP_Y)
     /** Right-stick camera turn speed, percent of the original. */
     const val CAMERA_SPEED = "camera_speed"
     /** Nearby: where enemies fill from, 0 bottom right (friendlies top left), 1 top left. */
@@ -149,6 +157,12 @@ object PadSettings {
         MOD_ALT to true,
         SEC_NUMBERS to true,
         CAMERA_SPEED to 100,
+        XP_SHOW to true,
+        XP_TEXT to false,
+        XP_WIDTH to 100,
+        XP_HEIGHT to 11,
+        XP_X to 0,
+        XP_Y to 0,
         NEARBY_ENEMIES_TOP_LEFT to 0,
         NEARBY_MAX_ENEMIES to 10,
         NEARBY_MAX_FRIENDS to 10,
@@ -328,11 +342,13 @@ object PadSettings {
     fun set(key: String, value: Boolean) {
         prefs?.edit()?.putBoolean(key, value)?.apply()
         version++
+        if (key in XP_KEYS) XpBarSync.changed()
     }
 
     fun set(key: String, value: Int) {
         prefs?.edit()?.putInt(key, value)?.apply()
         version++
+        if (key in XP_KEYS) XpBarSync.changed()
     }
 
     /** The chosen glow color for a modifier setting key, or null for the default. */
@@ -480,6 +496,7 @@ object PadSettings {
             remove(HIDDEN)
         }?.apply()
         version++
+        XpBarSync.changed()
     }
 
     /** Every setting and the remap list as one JSON object. */

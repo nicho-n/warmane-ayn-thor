@@ -105,7 +105,7 @@ local function migrateRunWalk()
     end
 end
 
-local defaults = { petbar = true, xpLift = 10, hideTriggers = true, hideTrail = true, defaultCastBar = true, hideGcd = false }
+local defaults = { petbar = true, xpShow = true, xpText = false, xpWidth = 100, xpHeight = 11, xpX = 0, xpY = 0, hideTriggers = true, hideTrail = true, defaultCastBar = true, hideGcd = false }
 local db
 local pending = {}
 local events = CreateFrame("Frame")
@@ -206,13 +206,181 @@ local function applyPetBar()
 end
 
 ---------------------------------------------------------------------------
--- 4. XP bar: ConsolePort puts it at the very bottom edge; lift it.
+-- 4. XP bar: shorter, framed, centred on the bottom edge of the screen. Text, width,
+--    height and offsets come from the app's settings (AppSettings.lua, or /thor xpbar
+--    typed by the app when they change in game).
 ---------------------------------------------------------------------------
-local function liftBar(bar)
-    local lift = db and db.xpLift or 0
-    if lift == 0 or not bar or bar:GetNumPoints() == 0 then return end
-    local point, relativeTo, relativePoint, x, y = bar:GetPoint(1)
-    bar:SetPoint(point, relativeTo, relativePoint, x, (y or 0) + lift)
+
+-- XP fill: bright blue while rested (#0063FF), violet (#9400D3) once rested runs out, on
+-- WoW's plain status bar texture (ConsolePort's is very dark). The rest of the rested bonus
+-- is dark blue (#002466) from the end of the fill to the tick; ConsolePort's own overlay for
+-- it is made invisible, as it sits above the fill and would cover it.
+local XP_RESTED, XP_NORMAL = { 0, 0.39, 1 }, { 0.58, 0, 0.83 }
+local function colorXpBar(bar)
+    if not bar.ExhaustionTick or not bar.SetBarColorRaw then return end
+    local c = GetRestState() == 1 and XP_RESTED or XP_NORMAL
+    bar:SetBarColorRaw(c[1], c[2], c[3], 1)
+    local fill = bar.ExhaustionLevelFillBar
+    if fill then
+        bar.thorColoring = true
+        fill:SetVertexColor(0, 0, 0, 0)
+        bar.thorColoring = nil
+    end
+end
+
+-- A 2px border and a dark track behind the bar, so its start and end are plain.
+local function frameBar(bar)
+    if bar.thorTrack then return end
+    local function tex(layer, owner)
+        local t = (owner or bar):CreateTexture(nil, layer)
+        t:SetTexture("Interface\\Buttons\\WHITE8X8")
+        return t
+    end
+    -- On the StatusBar itself: it's in a lower strata than the bar, so a track on the bar
+    -- would cover the fill.
+    bar.thorTrack = tex("BACKGROUND", bar.StatusBar)
+    bar.thorTrack:SetAllPoints(bar.StatusBar or bar)
+    bar.thorTrack:SetVertexColor(0, 0, 0, 0.65)
+    local b = 2
+    -- Each edge: two anchors just outside the bar, plus its thickness.
+    local edges = {
+        { "BOTTOMLEFT", "TOPLEFT", -b, 0, "BOTTOMRIGHT", "TOPRIGHT", b, 0, "h" },
+        { "TOPLEFT", "BOTTOMLEFT", -b, 0, "TOPRIGHT", "BOTTOMRIGHT", b, 0, "h" },
+        { "TOPRIGHT", "TOPLEFT", 0, 0, "BOTTOMRIGHT", "BOTTOMLEFT", 0, 0, "w" },
+        { "TOPLEFT", "TOPRIGHT", 0, 0, "BOTTOMLEFT", "BOTTOMRIGHT", 0, 0, "w" },
+    }
+    for _, e in ipairs(edges) do
+        local t = tex("OVERLAY")
+        t:SetPoint(e[1], bar, e[2], e[3], e[4])
+        t:SetPoint(e[5], bar, e[6], e[7], e[8])
+        if e[9] == "h" then t:SetHeight(b) else t:SetWidth(b) end
+        t:SetVertexColor(0, 0, 0, 1)
+    end
+    if bar.ExhaustionTick and bar.SetBarColorRaw then
+        if bar.StatusBar and bar.StatusBar.BarTexture then
+            bar.StatusBar.BarTexture:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        end
+        -- Runs after ConsolePort's own color hook.
+        hooksecurefunc(bar, "SetBarColor", colorXpBar)
+        bar:HookScript("OnShow", colorXpBar)
+        if bar.ExhaustionLevelFillBar then
+            hooksecurefunc(bar.ExhaustionLevelFillBar, "SetVertexColor", function()
+                if not bar.thorColoring then colorXpBar(bar) end
+            end)
+        end
+        local watch = CreateFrame("Frame")
+        watch:RegisterEvent("PLAYER_UPDATE_RESTING")
+        watch:RegisterEvent("UPDATE_EXHAUSTION")
+        watch:RegisterEvent("PLAYER_ENTERING_WORLD")
+        watch:SetScript("OnEvent", function() colorXpBar(bar) end)
+    end
+    colorXpBar(bar)
+    local sb = bar.StatusBar
+    -- Remaining rested XP: from the end of the fill to where rested ends.
+    if sb and bar.ExhaustionTick then
+        local rested = tex("ARTWORK", sb)
+        rested:SetVertexColor(0, 0.14, 0.4, 1)
+        local function placeRested()
+            local cur, max, rest = UnitXP("player"), UnitXPMax("player"), GetXPExhaustion()
+            local w = sb:GetWidth()
+            if not rest or rest <= 0 or not max or max <= 0 or not w or w <= 0 then rested:Hide() return end
+            local left = w * cur / max
+            local right = w * min(1, (cur + rest) / max)
+            if right - left < 1 then rested:Hide() return end
+            rested:ClearAllPoints()
+            rested:SetPoint("TOPLEFT", sb, "TOPLEFT", left, 0)
+            rested:SetPoint("BOTTOMRIGHT", sb, "BOTTOMLEFT", right, 0)
+            rested:Show()
+        end
+        local watch = CreateFrame("Frame")
+        for _, e in ipairs({ "PLAYER_XP_UPDATE", "UPDATE_EXHAUSTION", "PLAYER_LEVEL_UP", "PLAYER_ENTERING_WORLD" }) do
+            watch:RegisterEvent(e)
+        end
+        watch:SetScript("OnEvent", placeRested)
+        sb:HookScript("OnSizeChanged", placeRested)
+        placeRested()
+    end
+    -- A thin line at every 5%, over the fill.
+    if sb then
+        local lines = {}
+        for i = 1, 19 do
+            local t = tex("OVERLAY", sb)
+            t:SetVertexColor(0, 0, 0, 0.85)
+            lines[i] = t
+        end
+        -- Each line exactly 2 screen pixels wide, on whole pixels, so they all look the same
+        -- (UI units don't fall on whole pixels).
+        local function place()
+            local w, left = sb:GetWidth(), sb:GetLeft()
+            if not w or not left then return end
+            local physH = tonumber(strmatch(GetCVar("gxResolution") or "", "%d+x(%d+)")) or 1080
+            local px = 768 / physH / sb:GetEffectiveScale()
+            for i, t in ipairs(lines) do
+                local x = floor((left + w * i / 20) / px + 0.5) * px - left
+                t:ClearAllPoints()
+                t:SetWidth(2 * px)
+                t:SetPoint("TOPLEFT", sb, "TOPLEFT", x, 0)
+                t:SetPoint("BOTTOMLEFT", sb, "BOTTOMLEFT", x, 0)
+            end
+        end
+        bar.thorPlaceLines = place
+        sb:HookScript("OnSizeChanged", place)
+        place()
+    end
+    -- Text 3 points bigger.
+    local text = bar.OverlayFrame and bar.OverlayFrame.Text
+    if text and text.GetFont then
+        local font, size, flags = text:GetFont()
+        if font and size then text:SetFont(font, size + 3, flags) end
+        -- Shown or hidden by /thor xptext, whatever ConsolePort does on hover.
+        hooksecurefunc(text, "Show", function(t) if not (db and db.xpText) then t:Hide() end end)
+        hooksecurefunc(text, "Hide", function(t) if db and db.xpText then t:Show() end end)
+        if db and db.xpText then text:Show() else text:Hide() end
+    end
+end
+
+-- Width: db.xpWidth % of the span from the middle of D-pad Left (Down with text) to the middle of A,
+-- centered on the screen rather than on the ConsolePort bar.
+-- Bar bottom above UIParent's bottom: the 2px border plus the few pixels of the game window
+-- that sit below the edge of the Thor's screen.
+local XP_BOTTOM = 5.5
+
+local function xpTargetWidth(scale)
+    local pct = db and db.xpWidth or 100
+    -- 100%, without text: from the middle of D-pad Left to the middle of A (the right face
+    -- button). With text: from D-pad Down to A.
+    local left, right = (db and db.xpText) and _G.CPB_L_DOWN or _G.CPB_L_LEFT, _G.CPB_R_RIGHT
+    local lx, rx = left and left:GetCenter(), right and right:GetCenter()
+    if not lx or not rx then return nil end
+    -- + ConsolePort's end caps, which SetSingleBarSize takes off again.
+    return ((rx * right:GetEffectiveScale() - lx * left:GetEffectiveScale()) / scale) * pct / 100 + 8
+end
+
+local function shortenBar(container, bar, width, isDouble)
+    if not bar or bar:GetNumPoints() == 0 then return end
+    local scale = bar:GetEffectiveScale()
+    local target = xpTargetWidth(scale)
+    if target and target > 50 then
+        if isDouble then container:SetDoubleBarSize(bar, target) else container:SetSingleBarSize(bar, target) end
+    end
+    -- A single bar: db.xpHeight, at least 16 with text (bigger font). Two stacked bars
+    -- keep ConsolePort's size.
+    if not isDouble and bar.StatusBar then
+        local h = db and db.xpHeight or 11
+        if db and db.xpText then h = max(h, 16) end
+        bar:SetHeight(h)
+        bar.StatusBar:SetHeight(h)
+    end
+    -- On the bottom edge of the screen, centred: the 2px border just touches the edge.
+    -- With two bars the second sits on top of the first.
+    local _, _, _, _, y = bar:GetPoint(1)
+    local stackY = (isDouble and (y or 0) > 5) and (bar:GetHeight() + 2) or 0
+    bar:ClearAllPoints()
+    bar:SetPoint("BOTTOM", UIParent, "BOTTOM", db and db.xpX or 0, XP_BOTTOM + stackY + (db and db.xpY or 0))
+    frameBar(bar)
+    if bar.thorPlaceLines then bar.thorPlaceLines() end
+    -- Turned off in the app: ConsolePort has just shown it; hide it again.
+    if db and db.xpShow == false then bar:Hide() end
 end
 
 local function relayoutWatchBars()
@@ -224,7 +392,18 @@ local function hookWatchBars()
     local container = ConsolePortBarWatchBars
     if not container or container.thorHooked or not container.LayoutBar then return end
     container.thorHooked = true
-    hooksecurefunc(container, "LayoutBar", function(_, bar) liftBar(bar) end)
+    -- ConsolePort's fading side backgrounds blur where the bar starts and ends.
+    if container.BGLeft then container.BGLeft:Hide() end
+    if container.BGRight then container.BGRight:Hide() end
+    -- ConsolePort's decorative line across its bar runs right through the XP bar.
+    local line = container:GetParent() and container:GetParent().BottomLine
+    if line then
+        line:Hide()
+        hooksecurefunc(line, "Show", line.Hide)
+    end
+    hooksecurefunc(container, "LayoutBar", function(self, bar, width, isTopBar, isDouble)
+        shortenBar(self, bar, width, isDouble)
+    end)
     relayoutWatchBars()
 end
 
@@ -475,9 +654,15 @@ bgButton:SetScript("OnClick", function()
     if not frame:IsShown() then TogglePVPFrame() end
     if tab and frame:IsShown() then tab:Click() end
 end)
+-- Alt+Shift+L (the app's Leave Party button): leaves the party or raid.
+local leaveButton = CreateFrame("Button", "ThorControlsLeaveParty", UIParent)
+leaveButton:SetScript("OnClick", function()
+    if GetNumPartyMembers() > 0 or GetNumRaidMembers() > 0 then LeaveParty() end
+end)
 local function bindBattlegroundsKey()
     if InCombatLockdown() then return end
     SetOverrideBindingClick(bgButton, false, "ALT-CTRL-SHIFT-V", "ThorControlsBattlegrounds")
+    SetOverrideBindingClick(leaveButton, false, "ALT-SHIFT-L", "ThorControlsLeaveParty")
 end
 
 local function noop() end
@@ -512,6 +697,13 @@ events:SetScript("OnEvent", function(_, event, arg1)
             -- 1.39: the global cooldown sweep is shown again (cheap since section 13);
             -- switch it back on once for those who had the old default.
             if not db.gcdShown then db.gcdShown = true; db.hideGcd = false end
+            -- XP bar settings from the app (AppSettings.lua, rewritten by the app each launch).
+            local app = ThorControlsApp
+            if type(app) == "table" then
+                for _, k in ipairs({ "xpShow", "xpText", "xpWidth", "xpHeight", "xpX", "xpY" }) do
+                    if app[k] ~= nil then db[k] = app[k] end
+                end
+            end
             applyCalibration()
             applyDefaultBindings()
             db.runWalkMoved = db.runWalkMoved or {}
@@ -655,10 +847,36 @@ end
 SLASH_THORCONTROLS1 = "/thor"
 SlashCmdList.THORCONTROLS = function(input)
     local cmd, value = strsplit(" ", strlower(strtrim(input or "")), 2)
-    if cmd == "xp" and tonumber(value) then
-        db.xpLift = tonumber(value)
+    if cmd == "xpbar" and value then
+        -- Typed by the app when its XP bar settings change: show(0/1) text(0/1) width height x y.
+        local v, t, w, h, x, y = strsplit(" ", value)
+        v, t, w, h, x, y = tonumber(v), tonumber(t), tonumber(w), tonumber(h), tonumber(x), tonumber(y)
+        if v and t and w and h and x and y then
+            db.xpShow, db.xpText, db.xpWidth, db.xpHeight, db.xpX, db.xpY = v == 1, t == 1, w, h, x, y
+            relayoutWatchBars()
+            local bars = ConsolePortBarWatchBars and ConsolePortBarWatchBars.bars or {}
+            for _, bar in ipairs(bars) do
+                local text = bar.OverlayFrame and bar.OverlayFrame.Text
+                if text then if db.xpText then text:Show() else text:Hide() end end
+            end
+        end
+    elseif cmd == "xp" and tonumber(value) then
+        db.xpY = tonumber(value)
         relayoutWatchBars()
-        msg("XP bar lift set to " .. db.xpLift .. ". (If the bar didn't move, /reload.)")
+        msg("XP bar moved up " .. db.xpY .. ".")
+    elseif cmd == "xpwidth" and tonumber(value) then
+        db.xpWidth = tonumber(value)
+        relayoutWatchBars()
+        msg("XP bar width " .. db.xpWidth .. "% (100 = D-pad Left to A).")
+    elseif cmd == "xptext" and (value == "on" or value == "off") then
+        db.xpText = value == "on"
+        relayoutWatchBars()
+        local bars = ConsolePortBarWatchBars and ConsolePortBarWatchBars.bars or {}
+        for _, bar in ipairs(bars) do
+            local text = bar.OverlayFrame and bar.OverlayFrame.Text
+            if text then if db.xpText then text:Show() else text:Hide() end end
+        end
+        msg("XP bar text " .. onoff(db.xpText))
     elseif cmd == "petbar" and (value == "on" or value == "off") then
         db.petbar = value == "on"
         if db.petbar then applyPetBar() else msg("Default pet bar will be back after /reload.") end
@@ -749,8 +967,10 @@ SlashCmdList.THORCONTROLS = function(input)
         reloadConsolePortBindings()
     else
         msg("Hide default pet bar " .. onoff(db.petbar) .. " | L2/R2 icons " .. onoff(not db.hideTriggers) ..
-            " | XP bar lift " .. (db.xpLift or 0))
-        msg("/thor xp <number>  - move the XP bar up (e.g. 10, 20; 0 = original)")
+            " | XP bar width " .. (db.xpWidth or 100) .. "%, height " .. (db.xpHeight or 11) ..
+            ", offset " .. (db.xpX or 0) .. "," .. (db.xpY or 0) ..
+            " | XP bar text " .. onoff(db.xpText))
+        msg("XP bar: set its text, size and position in the app (Settings > XP bar).")
         msg("/thor petbar on|off  - hide Blizzard's default pet bar")
         msg("/thor triggers on|off  - show the L2/R2 icons on the ConsolePort bar (reloads)")
         msg("/thor castbar on|off  - WoW's own cast bar instead of ConsolePort's (reloads)")

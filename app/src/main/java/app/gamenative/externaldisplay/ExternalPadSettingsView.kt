@@ -175,6 +175,15 @@ class ExternalPadSettingsView(
                 addView(toggleRow(listOf("Show message when the mode changes" to PadSettings.MODE_MESSAGE)))
             }
         }
+        section("XP bar", collapsible = true) {
+            addView(toggleRow(listOf("Show the XP bar" to PadSettings.XP_SHOW)))
+            addView(toggleRow(listOf("XP numbers on the bar" to PadSettings.XP_TEXT)))
+            addView(sliderRow("Width", PadSettings.XP_WIDTH, 30, 200) { "$it%" })
+            addView(sliderRow("Height", PadSettings.XP_HEIGHT, 4, 30) { "$it" })
+            addView(sliderRow("Left / right", PadSettings.XP_X, -300, 300) { "$it" })
+            addView(sliderRow("Up / down", PadSettings.XP_Y, -20, 300) { "$it" })
+            addView(note("Width 100% runs from the middle of D-pad Left to the middle of A (from D-pad Down with the numbers on). With the numbers on, the bar is at least 16 high. Changes show in the game right away."))
+        }
         section("Camera", collapsible = true) {
             addView(sliderRow("Right-stick camera speed", PadSettings.CAMERA_SPEED, 25, 300) { "$it%" })
         }
