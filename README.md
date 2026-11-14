@@ -8,6 +8,8 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 
 **[Download here](https://github.com/nicho-n/warmane-ayn-thor/releases/latest/download/warmane-ayn-thor.apk)**
 
+<img src="images/ayn-thor.jpg" width="500" alt="Warmane on the AYN Thor: the game on the top screen, the touch targeting page on the bottom screen">
+
 ## Features
 
 - **Touch targeting:** a page on the bottom screen lists nearby units; tap one to target it.
