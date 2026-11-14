@@ -11,6 +11,7 @@
 --  4. XP bar: lifts ConsolePort's XP/reputation bar off the screen edge.
 --  5. Triggers: hides the big L2/R2 icons on the ConsolePort bar (toggleable).
 --  6. Cursor trail: hides ConsolePort's controller icon next to the pointer.
+--  8. Cast bar: WoW's own cast bar instead of ConsolePortBar's restyled one.
 --  7. Default bindings: characters without ConsolePort bindings get the layout in
 --     DEFAULT_BINDINGS (Select targets a friend, L1 an enemy, Start interacts with
 --     the unit under the pointer; see README).
@@ -83,7 +84,7 @@ local function applyDefaultBindings(force)
     return false
 end
 
-local defaults = { petbar = true, xpLift = 10, hideTriggers = true, hideTrail = true }
+local defaults = { petbar = true, xpLift = 10, hideTriggers = true, hideTrail = true, defaultCastBar = true }
 local db
 local pending = {}
 local events = CreateFrame("Frame")
@@ -206,6 +207,8 @@ local TRIGGER_LAYOUT = {
 local function applyTriggers()
     local cfg = ConsolePortBarSetup
     if not db or not cfg or not cfg.layout then return false end
+    -- WoW's own cast bar instead of ConsolePortBar's restyled one in the middle of its bar.
+    cfg.defaultCastBar = db.defaultCastBar and true or nil
     for id, geometry in pairs(TRIGGER_LAYOUT) do
         if db.hideTriggers then
             cfg.layout[id] = nil
@@ -248,6 +251,9 @@ events:SetScript("OnEvent", function(_, event, arg1)
             for k, v in pairs(defaults) do if db[k] == nil then db[k] = v end end
             applyCalibration()
             applyDefaultBindings()
+            -- ConsolePortBar loaded first (OptionalDeps), so its own ADDON_LOADED has passed;
+            -- its settings are read when the bar is set up at login, so set them now.
+            applyTriggers()
         elseif arg1 == "ConsolePortBar" then
             applyTriggers()
             hookWatchBars()
@@ -289,6 +295,35 @@ SlashCmdList.THORCONTROLS = function(input)
         if InCombatLockdown() then msg("Leave combat first."); return end
         db.hideTriggers = value == "off"
         if applyTriggers() then ReloadUI() else msg("ConsolePort bar isn't loaded; the change applies next time it loads.") end
+    elseif cmd == "profile" and (value == "on" or value == "off") then
+        -- WoW's own per-addon CPU measuring; costs a little itself, so only while looking.
+        SetCVar("scriptProfile", value == "on" and "1" or "0")
+        ReloadUI()
+    elseif cmd == "cpu" then
+        if GetCVar("scriptProfile") ~= "1" then
+            msg("Turn measuring on first: /thor profile on (reloads), play a bit, then /thor cpu.")
+            return
+        end
+        UpdateAddOnCPUUsage()
+        local list, total = {}, 0
+        for i = 1, GetNumAddOns() do
+            if IsAddOnLoaded(i) then
+                local ms = GetAddOnCPUUsage(i)
+                total = total + ms
+                list[#list + 1] = { name = GetAddOnInfo(i), ms = ms }
+            end
+        end
+        table.sort(list, function(a, b) return a.ms > b.ms end)
+        msg(string.format("Addon CPU since the last reload (%.1f s total):", total / 1000))
+        for i = 1, math.min(10, #list) do
+            msg(string.format("%2d. %s  %.1f s (%d%%)", i, list[i].name, list[i].ms / 1000,
+                total > 0 and math.floor(list[i].ms / total * 100 + 0.5) or 0))
+        end
+        msg("/thor profile off when done.")
+    elseif cmd == "castbar" and (value == "on" or value == "off") then
+        if InCombatLockdown() then msg("Leave combat first."); return end
+        db.defaultCastBar = value == "on"
+        if applyTriggers() then ReloadUI() else msg("ConsolePort bar isn't loaded; the change applies next time it loads.") end
     elseif cmd == "trail" and (value == "on" or value == "off") then
         db.hideTrail = value == "off"
         applyTrail()
@@ -306,6 +341,8 @@ SlashCmdList.THORCONTROLS = function(input)
         msg("/thor xp <number>  - move the XP bar up (e.g. 10, 20; 0 = original)")
         msg("/thor petbar on|off  - hide Blizzard's default pet bar")
         msg("/thor triggers on|off  - show the L2/R2 icons on the ConsolePort bar (reloads)")
+        msg("/thor castbar on|off  - WoW's own cast bar instead of ConsolePort's (reloads)")
+        msg("/thor profile on|off, /thor cpu  - measure which addons use the most CPU")
         msg("/thor trail on|off  - controller icon next to the pointer")
         msg("/thor calibrate  - put the controller calibration back")
         msg("/thor defaults  - replace this character's controller bindings with the defaults (reloads)")
