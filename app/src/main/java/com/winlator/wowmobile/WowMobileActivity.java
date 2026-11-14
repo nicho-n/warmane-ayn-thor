@@ -378,9 +378,7 @@ public class WowMobileActivity extends AppCompatActivity {
             case PENDING:
                 showStatus(R.string.wow_status_pending);
                 break;
-            case WAITING_FIRST_LOGIN:
-                showStatus(R.string.wow_status_first_login);
-                break;
+            case WAITING_FIRST_LOGIN: // the account folder is set up during the first login (AccountWatcher)
             case READY:
                 tvStatus.setVisibility(View.GONE); // nothing to say when all is set up
                 break;
@@ -401,8 +399,12 @@ public class WowMobileActivity extends AppCompatActivity {
         final Handler handler = new Handler();
         Executors.newSingleThreadExecutor().execute(() -> {
             // Keep our installed addons in step with this app (only their own folders).
-            new AddonInstaller(this, gameFolder).updateInstalled();
             Provisioner provisioner = new Provisioner(this, gameFolder);
+            provisioner.setAccountName(LoginSecret.accountName(this));
+            AddonInstaller addons = new AddonInstaller(this, gameFolder);
+            // Put back any that are missing (not in a WoW Imito folder: its addons need its own ConsolePort).
+            if (!provisioner.isWowImitoFolder()) addons.installMissing();
+            addons.updateInstalled();
             boolean provisioned = provisioner.provision();
 
             handler.post(() -> {

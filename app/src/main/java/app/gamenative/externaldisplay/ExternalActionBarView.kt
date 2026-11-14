@@ -469,8 +469,22 @@ class ExternalActionBarView(
 
         private class Page(val id: String, val title: String, val slots: List<Slot>)
 
-        // WoW's default bindings. Over 8 buttons, a page splits into two columns.
+        // WoW's default bindings. Over 8 buttons, a page splits into two columns. Target is first,
+        // so the pad opens on it.
         private val PAGES = listOf(
+            Page(
+                "target", "Target",
+                listOf(
+                    // wow-mobile: F1-F12 are ConsolePort's controller keys, so these type /target instead.
+                    command("Self", "/target player"),
+                    command("Party 1", "/target party1"),
+                    command("Party 2", "/target party2"),
+                    command("Party 3", "/target party3"),
+                    command("Party 4", "/target party4"),
+                    page("Next enemy", XKeycode.KEY_TAB),
+                    page("Previous enemy", XKeycode.KEY_TAB, XKeycode.KEY_SHIFT_L),
+                ),
+            ),
             Page(
                 "interface", "Interface",
                 listOf(
@@ -491,19 +505,6 @@ class ExternalActionBarView(
                     page("Bags", XKeycode.KEY_B),
                     // Escape opens the game menu ("System") when nothing else is open.
                     page("System", XKeycode.KEY_ESC),
-                ),
-            ),
-            Page(
-                "target", "Target",
-                listOf(
-                    // wow-mobile: F1-F12 are ConsolePort's controller keys, so these type /target instead.
-                    command("Self", "/target player"),
-                    command("Party 1", "/target party1"),
-                    command("Party 2", "/target party2"),
-                    command("Party 3", "/target party3"),
-                    command("Party 4", "/target party4"),
-                    page("Next enemy", XKeycode.KEY_TAB),
-                    page("Previous enemy", XKeycode.KEY_TAB, XKeycode.KEY_SHIFT_L),
                 ),
             ),
             Page(

@@ -103,6 +103,11 @@ public class ConsolePortController {
         boolean down = action == KeyEvent.ACTION_DOWN;
 
         XKeycode key = buttonKey(keyCode);
+        // Forward jump, on the button combination chosen in Settings > Controller (off by default).
+        if (isForwardJumpCombo(keyCode)) {
+            if (down && event.getRepeatCount() == 0) forwardJump();
+            return true;
+        }
         if (key != null) {
             if (event.getRepeatCount() == 0) {
                 if (down) {
@@ -141,6 +146,37 @@ public class ConsolePortController {
                 return true; // Guide/Home is unused by ConsolePort
         }
         return false;
+    }
+
+    /**
+     * Settings > Controller > Forward jump: 0 off, 1 L2 + R1, 2 R2 + L1, 3 L2 + L1, 4 R2 + R1
+     * (the trigger held, then the shoulder button pressed, with the other trigger up).
+     */
+    private boolean isForwardJumpCombo(int keyCode) {
+        switch (app.gamenative.externaldisplay.PadSettings.INSTANCE.intValue(app.gamenative.externaldisplay.PadSettings.FORWARD_JUMP)) {
+            case 1: return keyCode == KeyEvent.KEYCODE_BUTTON_R1 && shiftHeld && !ctrlHeld;
+            case 2: return keyCode == KeyEvent.KEYCODE_BUTTON_L1 && ctrlHeld && !shiftHeld;
+            case 3: return keyCode == KeyEvent.KEYCODE_BUTTON_L1 && shiftHeld && !ctrlHeld;
+            case 4: return keyCode == KeyEvent.KEYCODE_BUTTON_R1 && ctrlHeld && !shiftHeld;
+            default: return false;
+        }
+    }
+
+    /**
+     * Jumps forward from standing, like a desktop macro that holds forward, jumps and lets
+     * go: Up (WoW's move forward) down, Space (jump), Up released, with the triggers'
+     * Shift / Ctrl let go meanwhile. Up stays down if the left stick is already pushing forward.
+     */
+    private void forwardJump() {
+        setModifiersSuspended(true);
+        boolean alreadyForward = arrows[0];
+        if (!alreadyForward) xServer.injectKeyPress(XKeycode.KEY_UP);
+        handler.postDelayed(() -> xServer.injectKeyPress(XKeycode.KEY_SPACE), 20);
+        handler.postDelayed(() -> xServer.injectKeyRelease(XKeycode.KEY_SPACE), 50);
+        handler.postDelayed(() -> {
+            if (!alreadyForward && !arrows[0]) xServer.injectKeyRelease(XKeycode.KEY_UP);
+            setModifiersSuspended(false);
+        }, 80);
     }
 
     private void setShift(boolean held) {

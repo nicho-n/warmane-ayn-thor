@@ -55,6 +55,11 @@ class ExternalPadSettingsView(
             addView(sliderRow("Most enemies shown", PadSettings.NEARBY_MAX_ENEMIES, 1, 20) { "$it" })
             addView(sliderRow("Most friendlies shown", PadSettings.NEARBY_MAX_FRIENDS, 1, 20) { "$it" })
             addView(note("Up to 10 the list has 10 boxes; above that it gets more rows (up to 20 boxes), and the boxes get smaller."))
+            addView(toggleRow(listOf("Focus bar (Clear Focus / Set Focus or your focus)" to PadSettings.FOCUS_BAR)))
+            addView(note("Double-tap a box to target it and set it as your focus. Tap your current target again to clear the target."))
+            addView(sliderRow("Party mode: most enemies shown", PadSettings.PARTY_MAX_ENEMIES, 1, 15) { "$it" })
+            addView(toggleRow(listOf("Party mode: add extra column for enemies" to PadSettings.PARTY_EXTRA_COLUMN)))
+            addView(note("Party mode lists your party on the left and nearby enemies on the right; with the extra column, enemies get two columns."))
             addView(toggleRow(listOf("Nearby shows friendly NPCs" to PadSettings.NEARBY_FRIENDLY_NPC)))
             addView(toggleRow(listOf("Nearby shows friendly players" to PadSettings.NEARBY_FRIENDLY_PLAYER)))
             addView(toggleRow(listOf("Cursor back to screen centre after a target tap" to PadSettings.TARGET_CURSOR_CENTER)))
@@ -186,6 +191,10 @@ class ExternalPadSettingsView(
         }
         section("Camera", collapsible = true) {
             addView(sliderRow("Right-stick camera speed", PadSettings.CAMERA_SPEED, 25, 300) { "$it%" })
+        }
+        section("Controller", collapsible = true) {
+            addView(cycleRow("Forward jump", PadSettings.FORWARD_JUMP, listOf("Off", "L2 + R1", "R2 + L1", "L2 + L1", "R2 + R1")))
+            addView(note("Jumps forward from standing (move forward and jump at once). The chosen combination does this instead of its ConsolePort action."))
         }
         section("Triggers (L2 / R2)", collapsible = true) {
             addView(toggleRow(listOf("L2 / R2 act as modifier keys" to PadSettings.TRIGGER_MODS)))

@@ -13,7 +13,6 @@
     <string name="wow_status_select_folder">Select the folder that contains Wow.exe to get started.</string>
     <string name="wow_status_invalid_folder">Wow.exe not found in this folder.</string>
     <string name="wow_status_pending">Ready to play — game files will be prepared on first launch.</string>
-    <string name="wow_status_first_login">Almost done! Log in once, then exit the game and press PLAY again: your controls will be configured automatically. If the addon shows a controller setup screen on that first login, just ignore it.</string>
     <string name="wow_status_ready">Everything is configured. Have fun!</string>
     <string name="wow_preparing_game">Preparing game…</string>
     <string name="wow_provision_failed">Unable to prepare the game folder</string>
@@ -33,8 +32,10 @@
     <string name="wow_auto_login_enable">Type my password on the login screen</string>
     <string name="wow_password_hint">Password (leave empty to keep the saved one)</string>
     <string name="wow_password_saved_hint">Password saved. Type a new one to replace it</string>
-    <string name="wow_auto_login_note">After Play, once the login screen shows, WoW Mobile types this password and presses Enter (once per launch). Tick \"Remember Account Name\" in WoW. The password is stored encrypted on this device only; untick to delete it.</string>
+    <string name="wow_auto_login_note">The account name is filled in on the login screen, and your controller settings are set up for it before the first login. With auto-login on, the app types the password and presses Enter once the login screen shows (once per launch). The password is stored encrypted on this device only; untick to delete it.</string>
     <string name="wow_auto_login_no_password">Enter a password for auto-login</string>
+    <string name="wow_auto_login_no_account">Enter your account name for auto-login</string>
+    <string name="wow_account_name_hint">Account name</string>
     <string name="wow_addons_title">Install addons</string>
     <string name="wow_addons_message">These addons will be installed:\n%1$s\n\nA backup of your AddOns folder will be made in this folder. Continue?</string>
     <string name="wow_addons_imito">WoW Imito\'s addons (%1$s) need its own ConsolePort, so they will be moved to Interface/%2$s, where WoW doesn\'t load them.</string>

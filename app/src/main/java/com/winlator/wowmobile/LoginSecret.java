@@ -24,6 +24,7 @@ public final class LoginSecret {
     private static final String PREFS = "wow_login";
     private static final String PREF_DATA = "password";
     private static final String PREF_ENABLED = "auto_login";
+    private static final String PREF_ACCOUNT = "account_name";
 
     private LoginSecret() {}
 
@@ -60,6 +61,15 @@ public final class LoginSecret {
         }
         editor.apply();
         return true;
+    }
+
+    /** The WoW account name from WoW Settings, or "" if none. */
+    public static String accountName(Context context) {
+        return prefs(context).getString(PREF_ACCOUNT, "").trim();
+    }
+
+    public static void setAccountName(Context context, String name) {
+        prefs(context).edit().putString(PREF_ACCOUNT, name.trim()).apply();
     }
 
     /** Turns auto-login off and deletes the saved password. */

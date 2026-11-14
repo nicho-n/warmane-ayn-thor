@@ -39,6 +39,7 @@ public class Provisioner {
     private final Context context;
     private final GameFolder gameFolder;
     private JSONObject marker;
+    private String accountName = "";
 
     public Provisioner(Context context, GameFolder gameFolder) {
         this.context = context;
@@ -61,9 +62,18 @@ public class Provisioner {
         FileUtils.writeString(gameFolder.getMarkerFile(), marker.toString());
     }
 
+    /**
+     * The account name from WoW Settings. [provision] puts it in Config.wtf (the login screen
+     * fills it in) and creates its WTF/Account folder, so the controller settings are in place
+     * before the first login: WoW doesn't read settings files added while it runs.
+     */
+    public void setAccountName(String name) {
+        accountName = name != null ? name.trim() : "";
+    }
+
     public Status getStatus() {
         if (!gameFolder.isValid()) return Status.INVALID_FOLDER;
-        if (marker.optInt("provisionVersion", 0) < PROVISION_VERSION) return Status.PENDING;
+        if (marker.optInt("provisionVersion", 0) < PROVISION_VERSION || needsConsolePort() || needsConfig()) return Status.PENDING;
 
         List<File> accounts = gameFolder.getAccountDirs();
         if (accounts.isEmpty()) return Status.WAITING_FIRST_LOGIN;
@@ -122,11 +132,19 @@ public class Provisioner {
         }
 
         try {
-            if (marker.optInt("provisionVersion", 0) < PROVISION_VERSION) {
-                if (!installAddons()) return false;
-                if (!patchToc()) return false;
-                ensureRealmlist(marker.optString("realmlist", DEFAULT_REALMLIST));
-                patchConfigWtf();
+            // Also redone when the AddOns or WTF folder was emptied or removed since then.
+            boolean firstTime = marker.optInt("provisionVersion", 0) < PROVISION_VERSION;
+            if (needsConsolePort() && !installAddons()) return false;
+            if (!patchToc()) return false; // no change when already done
+            File realmlist = gameFolder.getRealmlistFile();
+            if (firstTime || realmlist == null || !realmlist.isFile()) ensureRealmlist(marker.optString("realmlist", DEFAULT_REALMLIST));
+            if (firstTime || needsConfig()) patchConfigWtf();
+            if (!accountName.isEmpty()) {
+                if (!accountName.equals(getConfigValue("accountName"))) setConfigValue("accountName", accountName);
+                // WoW names the folder after the account, in capitals.
+                new File(gameFolder.getAccountRootDir(), accountName.toUpperCase(java.util.Locale.ROOT)).mkdirs();
+            }
+            if (firstTime) {
                 marker.put("provisionVersion", PROVISION_VERSION);
                 saveMarker();
             }
@@ -155,6 +173,18 @@ public class Provisioner {
         catch (JSONException e) {
             return false;
         }
+    }
+
+    private boolean needsConsolePort() {
+        return !new File(gameFolder.getAddOnsDir(), "ConsolePort/ConsolePort.toc").isFile();
+    }
+
+    /**
+     * Config.wtf missing or reset (a new WTF folder: WoW writes its own defaults, a windowed
+     * game that doesn't fit the screen, with the intro movie).
+     */
+    private boolean needsConfig() {
+        return !gameFolder.getConfigWtf().isFile() || !"1".equals(getConfigValue("gxMaximize"));
     }
 
     /** True when WoW Imito's addons (WoWImito + its modified ConsolePort) are installed. */
@@ -399,17 +429,31 @@ public class Provisioner {
 
         String seed =
             "ConsolePortSettings = {\n" +
-            "\t[\"type\"] = \"XBOX\",\n" +
+            // Face buttons labelled like a Switch controller; L2/R2 are the modifiers
+            // (Shift/Ctrl), L1/R1 plain buttons.
+            "\t[\"type\"] = \"SWITCH\",\n" +
+            "\t[\"CP_M1\"] = \"CP_TL2\",\n" +
+            "\t[\"CP_M2\"] = \"CP_TR2\",\n" +
+            "\t[\"CP_T1\"] = \"CP_TL1\",\n" +
+            "\t[\"CP_T2\"] = \"CP_TR1\",\n" +
+            "\t[\"skipCalibration\"] = true,\n" +
             "\t[\"skipGuideBtn\"] = true,\n" +
             "\t[\"skipCP_T3\"] = true,\n" +
             "\t[\"skipCP_T4\"] = true,\n" +
             "\t[\"skipCP_T5\"] = true,\n" +
             "\t[\"skipCP_T6\"] = true,\n" +
-            "\t[\"interactWith\"] = \"CP_R_DOWN\",\n" +
+            "\t[\"actionBarStyle\"] = 4,\n" +
+            "\t[\"bindView\"] = 1,\n" +
             "\t[\"autoLootDefault\"] = true,\n" +
+            "\t[\"autoSellJunk\"] = true,\n" +
+            "\t[\"autoExtra\"] = true,\n" +
             "\t[\"stickRadialType\"] = 2,\n" +
-            "\t[\"stickRadialLocal\"] = true,\n" +
             "\t[\"disableStickMouse\"] = true,\n" +
+            "\t[\"disableSmartMouse\"] = true,\n" +
+            "\t[\"disableKeyboard\"] = true,\n" +
+            "\t[\"disableCvarReset\"] = true,\n" +
+            "\t[\"UIdropDownFix\"] = true,\n" +
+            "\t[\"unitHotkeyPool\"] = \"player$;party%d$;raid%d+$\",\n" +
             "\t[\"calibration\"] = {\n" +
             "\t\t[\"CP_R_UP\"] = \"F9\",\n" +
             "\t\t[\"CP_R_RIGHT\"] = \"F10\",\n" +

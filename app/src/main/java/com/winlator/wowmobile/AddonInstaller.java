@@ -125,6 +125,20 @@ public class AddonInstaller {
         if (needsNotPlater()) installAddon(NOTPLATER);
     }
 
+    /** Installs whichever of the addons in [install] are missing, e.g. after the AddOns folder was emptied. */
+    public void installMissing() {
+        try {
+            File addOnsDir = addOnsDir();
+            if (!addOnsDir.isDirectory() && !addOnsDir.mkdirs()) return;
+            if (!new File(addOnsDir, "ConsolePort/ConsolePort.toc").isFile()) installConsolePort();
+            for (String name : OWN) {
+                if (!new File(new File(addOnsDir, name), name + ".toc").isFile()) installAddon(name);
+            }
+            if (needsNotPlater()) installAddon(NOTPLATER);
+        }
+        catch (IOException e) {}
+    }
+
     /**
      * Updates this app's own addons when the app carries a newer version (compared by
      * "## Version" in the .toc). Addons that aren't installed are left alone.

@@ -50,9 +50,18 @@ object PadBridge {
     @Volatile
     var controllerModifierHold: ((Boolean) -> Unit)? = null
 
-    /** wow-mobile: told when the Target page appears or goes away (the app then turns the link on/off). */
+    /**
+     * wow-mobile: told when the Target page appears or goes away (the app then turns the link
+     * on/off). Told the current state as soon as it's set: the pad opens on the Target page,
+     * before the game screen starts listening.
+     */
     @Volatile
     var targetPageListener: ((Boolean) -> Unit)? = null
+        set(value) {
+            field = value
+            value?.invoke(targetPageShown)
+        }
+    @Volatile
     private var targetPageShown = false
 
     fun setTargetPageVisible(visible: Boolean) {

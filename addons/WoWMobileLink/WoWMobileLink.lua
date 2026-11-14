@@ -26,7 +26,9 @@
 --          and neutral NPCs and enemy players), 50-59 nearby friendly NPCs, 60-69 nearby
 --          friendlies (friendly players and/or NPCs, as the app asks for), 70-79 nearby
 --          enemies 11-20, 80-89 nearby friendlies 11-20, 90-94 battleground team 11-15,
---          95-99 battleground enemies 11-15
+--          95-99 battleground enemies 11-15, 100-124 raid1-25 (outside battlegrounds;
+--          num is the raid group, 1-8), 125 focus (always sent, so it can be targeted
+--          without its nameplate), 129 your target (so the app knows there is one; no key)
 --   class: 1 warrior 2 paladin 3 hunter 4 rogue 5 priest 6 death knight 7 shaman
 --          8 mage 9 warlock 10 druid (0 unknown)
 --   hp: 0-100 percent, 255 unknown.  flags: 1 dead, 2 not visible/offline, 4 your target,
@@ -530,9 +532,25 @@ do
         -- Battleground team 11-15 (90-94) and enemies 11-15 (95-99).
         KEYS[90 + i] = "ALT-SHIFT-" .. digits[i + 1]
     end
+    -- Raid members 1-25 (100-124): Alt+Shift and a letter (not L: ThorControls' Leave Party).
+    local letters = "ABCDEFGHIJKMNOPQRSTUVWXYZ"
+    for i = 0, 24 do KEYS[100 + i] = "ALT-SHIFT-" .. letters:sub(i + 1, i + 1) end
 end
 local UNIT_SLOTS = { [0] = "player", "party1", "party2", "party3", "party4" }
 for i = 1, 5 do UNIT_SLOTS[29 + i] = "arena" .. i end
+for i = 1, 25 do UNIT_SLOTS[99 + i] = "raid" .. i end
+-- Focus and target keys on Alt+Ctrl+F1-F4: letters with Alt+Ctrl+Shift are the open keys,
+-- and WoW falls back to a key without Shift when that combination isn't bound yet.
+-- Focus (125): Alt+Ctrl+F1.
+KEYS[125] = "ALT-CTRL-F1"
+UNIT_SLOTS[125] = "focus"
+-- Clear target (126, Alt+Ctrl+F2): tapping your current target's box again.
+KEYS[126] = "ALT-CTRL-F2"
+-- Focus your target (127, Alt+Ctrl+F3) and clear the focus (128, Alt+Ctrl+F4): the app's
+-- Set Focus and Clear Focus buttons, and a double tap on a box.
+KEYS[127] = "ALT-CTRL-F3"
+KEYS[128] = "ALT-CTRL-F4"
+local MACRO_SLOTS = { [126] = "/cleartarget", [127] = "/focus", [128] = "/clearfocus" }
 
 local buttons, slotName = {}, {}
 local keyOwner = CreateFrame("Frame")
@@ -545,7 +563,7 @@ local function makeButtons()
             b:SetAttribute("unit", UNIT_SLOTS[slot])
         else
             b:SetAttribute("type", "macro")
-            b:SetAttribute("macrotext", "")
+            b:SetAttribute("macrotext", MACRO_SLOTS[slot] or "")
         end
         buttons[slot] = b
         SetOverrideBindingClick(keyOwner, true, key, b:GetName(), "LeftButton")
@@ -679,6 +697,21 @@ local function collect()
         if mode == 4 then
             for i = 1, 5 do
                 if UnitExists("arena" .. i) then list[#list + 1] = unitRecord(29 + i, "arena" .. i) end
+            end
+        end
+    end
+    -- Focus, in every mode.
+    if UnitExists("focus") then list[#list + 1] = unitRecord(125, "focus") end
+    if UnitExists("target") then list[#list + 1] = unitRecord(129, "target") end
+    -- Raid members (the app's Raid Heal mode), with their raid group in num.
+    if mode ~= 3 then
+        for i = 1, math.min(25, GetNumRaidMembers()) do
+            local unit = "raid" .. i
+            if UnitExists(unit) then
+                local _, _, group = GetRaidRosterInfo(i)
+                local r = unitRecord(99 + i, unit)
+                r.num = group or 0
+                list[#list + 1] = r
             end
         end
     end

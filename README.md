@@ -22,19 +22,8 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 
 ## Features
 
-- **Touch targeting:** a page on the bottom screen lists nearby units; tap one to target it.
-  Enemies fill it from the bottom right, friendlies from the top left (Settings →
-  Targeting can swap them, set how many of each are shown, up to 20, and whether friendly
-  NPCs and players are listed). Players show in their class colour, NPCs in their
-  nameplate colour, so NotPlater's threat colours carry over; your target has a yellow
-  border. Earthbind Totem is listed too. Units with a unique name are targeted by name,
-  which works while moving. The **Mode** button picks the list: Nearby, Party, BG Team,
-  BG All (up to 15 players per side from the scoreboard, targeted by exact name), Arena
-  (2v2, 3v3 or 5v5, sized to the match) and Friendly NPC. Next to it: Invite, Thank,
-  Sorry, Map and Bags.
-- **XP bar:** a short, framed XP bar along the bottom edge of the screen, blue while
-  rested and purple otherwise, with a mark every 5%. Settings → XP bar shows or hides it,
-  turns the XP numbers on, and sets its width, height and position.
+- **Touch targeting:** a page on the bottom screen lists nearby units, your party, your
+  raid (Raid Heal mode), battleground or arena players; tap one to target it.
 - **Touch screen controls:** button pages, a keyboard and a trackpad on the bottom screen,
   with the game on the top screen.
 - **Opinionated console controls:** a fixed ConsolePort controller layout, plus **A** to
@@ -90,7 +79,8 @@ set of action bar buttons. Other buttons:
 3. Press **Play**.
 
 A new game folder is set up for Warmane (`logon.warmane.com`) at 1920x1080. Realm,
-resolution and auto-login can be changed in **WoW Settings**.
+resolution, account name and auto-login can be changed in **WoW Settings**. With the
+account name set, the controller is set up before your first login.
 
 ## Addons
 

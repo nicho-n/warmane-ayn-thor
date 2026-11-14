@@ -668,6 +668,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         // Login / character select: the controller works there (A = Enter), and auto-login
         // (WoW Settings) types the saved password once the login screen shows.
+        // The Target page opens in Nearby mode each time the game starts.
+        app.gamenative.externaldisplay.TargetFramesView.resetMode();
         glueScreens = new app.gamenative.externaldisplay.GlueScreenWatcher(linkReader);
         glueScreens.start();
         if (consolePortController != null) consolePortController.setGlueScreens(glueScreens);
@@ -680,7 +682,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             app.gamenative.externaldisplay.XpBarSync.INSTANCE.setAddOnsDir(addOns);
             app.gamenative.externaldisplay.XpBarSync.INSTANCE.write();
         }
-        if (com.winlator.wowmobile.LoginSecret.isEnabled(this)) {
+        // Only with an account name in Config.wtf (Play puts the one from WoW Settings there):
+        // without one the login screen's focus is in the account name box, and the password
+        // would be typed there in plain sight.
+        if (com.winlator.wowmobile.LoginSecret.isEnabled(this) && hasSavedAccountName(gamePath)) {
             String password = com.winlator.wowmobile.LoginSecret.load(this);
             if (password != null && !password.isEmpty()) {
                 autoLogin = new app.gamenative.externaldisplay.AutoLogin(xServer, glueScreens, password);
@@ -900,6 +905,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private app.gamenative.externaldisplay.WowMobileLinkReader linkReader;
     private app.gamenative.externaldisplay.AutoLogin autoLogin;
     private app.gamenative.externaldisplay.GlueScreenWatcher glueScreens;
+
+    /** The account name the login screen fills in (Config.wtf). */
+    private boolean hasSavedAccountName(String gamePath) {
+        if (gamePath == null) return false;
+        String name = new com.winlator.wowmobile.Provisioner(this, new com.winlator.wowmobile.GameFolder(gamePath)).getConfigValue("accountName");
+        return name != null && !name.isEmpty();
+    }
     private long linkChordAt = 0;
     private com.winlator.xserver.XKeycode linkOpenKeySent = null;
     /**
@@ -920,6 +932,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             // reloaded), at most every 5 s, or when the Targeting settings changed: every chord
             // makes ConsolePort redraw all its buttons for each modifier change, which showed as
             // a hitch every few seconds in combat.
+            // Not on the login or character screen: the chord's modifiers could land in the
+            // middle of auto-login typing the password (the pad now opens on the Target page).
+            if (glueScreens != null && glueScreens.getCurrent() != app.gamenative.externaldisplay.GlueScreenWatcher.Screen.NONE) {
+                signalHandler.postDelayed(this, 1000);
+                return;
+            }
             long now = System.currentTimeMillis();
             long since = now - app.gamenative.externaldisplay.LinkState.INSTANCE.getLastPacketAt();
             com.winlator.xserver.XKeycode key = linkOpenKey();

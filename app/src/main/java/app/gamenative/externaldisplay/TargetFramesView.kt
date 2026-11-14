@@ -36,14 +36,24 @@ class TargetFramesView(
 ) : LinearLayout(context) {
 
     // Saved by ordinal, so new modes go at the end; TAB_ORDER sets the order on screen.
-    private enum class Mode(val label: String) { AUTO("Auto"), NEARBY("Nearby"), DUNGEON("Party"), BATTLEGROUND("BG All"), ARENA("Arena"), FRIENDLY("Friendly NPC"), BG_TEAM("BG Team") }
+    private enum class Mode(val label: String) { AUTO("Auto"), NEARBY("Nearby"), DUNGEON("Party"), BATTLEGROUND("BG All"), ARENA("Arena"), FRIENDLY("Friendly NPC"), BG_TEAM("BG Team"), RAID_HEAL("Raid Heal") }
     // AUTO is no longer offered (kept so saved ordinals still line up); a saved AUTO opens Nearby.
-    private val TAB_ORDER = listOf(Mode.NEARBY, Mode.DUNGEON, Mode.BG_TEAM, Mode.BATTLEGROUND, Mode.ARENA, Mode.FRIENDLY)
+    private val TAB_ORDER = listOf(Mode.NEARBY, Mode.DUNGEON, Mode.RAID_HEAL, Mode.BG_TEAM, Mode.BATTLEGROUND, Mode.ARENA, Mode.FRIENDLY)
 
-    private var chosen = Mode.values().getOrElse(PadSettings.int(KEY_MODE)) { Mode.NEARBY }.let { if (it == Mode.AUTO) Mode.NEARBY else it }
+    // Nearby each time the game starts; a mode picked in the list lasts until then (the view
+    // is rebuilt whenever the page is shown).
+    private var chosen = sessionMode ?: Mode.NEARBY
     private val tabs = mutableMapOf<Mode, TextView>()
     private lateinit var modeButton: TextView
     private val actionPills = mutableListOf<TextView>()
+    /**
+     * The focus row, in every mode: Clear Focus on the left; on the right Set Focus, or your
+     * focus's box once you have one (targets it even without its nameplate).
+     */
+    private lateinit var focusBox: UnitBox
+    private lateinit var setFocus: TextView
+    private lateinit var clearFocus: TextView
+    private lateinit var focusRow: LinearLayout
     /** The list of modes, shown over the boxes under the Mode button. */
     private val modeMenu = LinearLayout(context).apply {
         orientation = VERTICAL
@@ -97,10 +107,14 @@ class TargetFramesView(
         TAB_ORDER.forEach { m ->
             val t = pill(m.label) {
                 chosen = m
-                PadSettings.set(KEY_MODE, m.ordinal)
+                sessionMode = m
                 modeMenu.visibility = GONE
                 refresh()
-            }.apply { layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(52)).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) } }
+            }.apply {
+                // Equal shares of the page's height, so every mode fits.
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) }
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            }
             tabs[m] = t
             modeMenu.addView(t)
         }
@@ -112,10 +126,26 @@ class TargetFramesView(
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         }
         addView(status)
+        focusRow = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(44))
+        }
+        clearFocus = pill("Clear Focus") { if (LinkState.unit(FOCUS_SLOT) != null) chordCtrlAlt(XKeycode.KEY_F4) }
+            .apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f) }
+        setFocus = pill("Set Focus") { if (LinkState.unit(TARGET_SLOT) != null) chordCtrlAlt(XKeycode.KEY_F3) }
+            .apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f) }
+        focusBox = UnitBox(FOCUS_SLOT).apply {
+            layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) }
+            visibility = GONE
+        }
+        focusRow.addView(clearFocus)
+        focusRow.addView(setFocus)
+        focusRow.addView(focusBox)
+        addView(focusRow)
         val area = FrameLayout(context).apply { layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f) }
         body.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         area.addView(body)
-        area.addView(modeMenu, FrameLayout.LayoutParams(dp(220), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START).apply { setMargins(dp(3), 0, 0, 0) })
+        area.addView(modeMenu, FrameLayout.LayoutParams(dp(240), FrameLayout.LayoutParams.MATCH_PARENT, Gravity.TOP or Gravity.START).apply { setMargins(dp(3), 0, 0, 0) })
         addView(area)
         refresh()
     }
@@ -152,11 +182,14 @@ class TargetFramesView(
 
         // Columns of slots for this mode.
         val columns: List<List<Int>> = when (mode) {
-            // Party left, nearby enemies right (grows past 5 rows when needed, see below).
-            Mode.DUNGEON, Mode.AUTO -> listOf((0..4).toList(), (40..49).toList())
+            // Party left, nearby enemies right (up to the Party mode maximum; grows past 5 rows
+            // when needed, see below), or in two columns with the extra column on.
+            Mode.DUNGEON, Mode.AUTO -> partyColumns()
             // Placeholder slots: placeNearby() puts units in the boxes.
             Mode.NEARBY -> nearbyRows().let { r -> listOf(List(r) { -1 }, List(r) { -1 }) }
             Mode.FRIENDLY -> listOf((50..54).toList(), (55..59).toList())
+            // One column of 5 per raid group (2 to 5 columns); placeRaid() puts units in the boxes.
+            Mode.RAID_HEAL -> List(raidColumns()) { List(5) { -1 } }
             // 2v2, 3v3 or 5v5 by how many are in the match (2v2 until more show up).
             Mode.ARENA -> arenaSize().let { n -> listOf((0 until n).toList(), (30 until 30 + n).toList()) }
             // 15 per side: team 10-19 then 90-94, enemies 20-29 then 95-99.
@@ -166,6 +199,8 @@ class TargetFramesView(
         val key = when (mode) {
             Mode.NEARBY -> "NEARBY-${nearbyRows()}"
             Mode.ARENA -> "ARENA-${arenaSize()}"
+            Mode.RAID_HEAL -> "RAID-${raidColumns()}"
+            Mode.DUNGEON, Mode.AUTO -> "PARTY-${partyEnemies()}-${PadSettings.bool(PadSettings.PARTY_EXTRA_COLUMN)}"
             else -> mode.name
         }
         if (builtFor != key) {
@@ -184,12 +219,37 @@ class TargetFramesView(
                 })
             }
         }
+        val focus = LinkState.unit(FOCUS_SLOT)
+        focusBox.bind(focus)
+        (if (focus != null) VISIBLE else GONE).let { if (focusBox.visibility != it) focusBox.visibility = it }
+        (if (focus != null) GONE else VISIBLE).let { if (setFocus.visibility != it) setFocus.visibility = it }
+        (if (PadSettings.bool(PadSettings.FOCUS_BAR)) VISIBLE else GONE).let { if (focusRow.visibility != it) focusRow.visibility = it }
+        clearFocus.background = theme.buttonBackground(resources.displayMetrics.density, 10f, false, accent = MENU_GREY)
+        clearFocus.setTextColor(theme.text)
+        clearFocus.alpha = if (focus != null) 1f else 0.6f
+        // Gold only with a target to focus; greyed out like Clear Focus otherwise.
+        if (LinkState.unit(TARGET_SLOT) != null) {
+            stylePill(setFocus, false, true)
+        } else {
+            setFocus.background = theme.buttonBackground(resources.displayMetrics.density, 10f, false, accent = MENU_GREY)
+            setFocus.setTextColor(theme.text)
+            setFocus.alpha = 0.6f
+        }
         if (mode == Mode.NEARBY) placeNearby()
-        boxes.forEach { it.bind(LinkState.unit(it.slot)) }
+        if (mode == Mode.RAID_HEAL) placeRaid()
+        // Your focus is on the focus row: leave its box here empty rather than show it twice.
+        // Players by name (unique); an NPC only when no other listed unit has its name.
+        val focusName = focus?.takeIf { PadSettings.bool(PadSettings.FOCUS_BAR) }?.name
+        val listed = boxes.mapNotNull { LinkState.unit(it.slot) }
+        fun isFocus(u: LinkUnit) = focusName != null && u.name == focusName &&
+            (u.flags and 64 != 0 || listed.count { it.name == focusName } == 1)
+        boxes.forEach { b -> b.bind(LinkState.unit(b.slot)?.takeUnless { isFocus(it) }) }
         // A column longer than 5 shows 5 boxes, and more (smaller) ones only down to the last
         // occupied slot. Units keep their slot, so boxes above don't move, they just shrink.
         // (Not Nearby: its grid size comes from the settings, and units fill from the corners.)
-        if (mode != Mode.NEARBY) columnBoxes.filter { it.size > 5 }.forEach { list ->
+        // (Nor Party mode with the extra column: a fixed grid.)
+        val fixedGrid = mode == Mode.NEARBY || mode == Mode.RAID_HEAL || ((mode == Mode.DUNGEON || mode == Mode.AUTO) && PadSettings.bool(PadSettings.PARTY_EXTRA_COLUMN))
+        if (!fixedGrid) columnBoxes.filter { it.size > 5 }.forEach { list ->
             val last = list.indexOfLast { LinkState.unit(it.slot) != null }
             val show = maxOf(5, last + 1)
             list.forEachIndexed { i, b ->
@@ -232,6 +292,49 @@ class TargetFramesView(
                 }
             }
         }
+    }
+
+    /** Raid members (slots 100-124) the addon is sending now. */
+    private fun raidUnits(): List<LinkUnit> = RAID_SLOTS.mapNotNull { LinkState.unit(it) }
+
+    /** Raid Heal columns: one per raid group up to the highest in use, 2 (10-man) to 5 (25-man). */
+    private fun raidColumns(): Int = (raidUnits().maxOfOrNull { it.raidGroup } ?: 0).coerceIn(2, 5)
+
+    /**
+     * Raid Heal: raid group N in column N, its members top to bottom in raid order. Members of
+     * groups past the last column fill any free boxes. Not in a raid: you and your party in
+     * the first column.
+     */
+    private fun placeRaid() {
+        val all = columnBoxes.flatten()
+        all.forEach { it.slot = -1 }
+        val raid = raidUnits()
+        if (raid.isEmpty()) {
+            (0..4).forEachIndexed { i, s -> columnBoxes.firstOrNull()?.getOrNull(i)?.slot = s }
+            return
+        }
+        val overflow = mutableListOf<LinkUnit>()
+        raid.groupBy { it.raidGroup }.forEach { (group, members) ->
+            val column = columnBoxes.getOrNull(group - 1)
+            members.sortedBy { it.slot }.forEachIndexed { i, u ->
+                val box = column?.getOrNull(i)
+                if (box != null) box.slot = u.slot else overflow += u
+            }
+        }
+        overflow.forEach { u -> all.firstOrNull { it.slot == -1 }?.slot = u.slot }
+    }
+
+    /** Party mode's nearby-enemy slots: the first 10 nearby enemies (40-49), then 70-74. */
+    private fun partyEnemies(): Int = PadSettings.int(PadSettings.PARTY_MAX_ENEMIES).coerceIn(1, 15)
+
+    private fun partyColumns(): List<List<Int>> {
+        val enemies = ((40..49) + (70..74)).take(partyEnemies())
+        fun pad(list: List<Int>, rows: Int) = list + List(rows - list.size) { -1 }
+        if (!PadSettings.bool(PadSettings.PARTY_EXTRA_COLUMN)) return listOf((0..4).toList(), pad(enemies, maxOf(5, enemies.size)))
+        // Extra column: enemies fill the middle column, then the right one; all columns the
+        // same height, so the boxes line up.
+        val rows = maxOf(5, (enemies.size + 1) / 2)
+        return listOf(pad((0..4).toList(), rows), pad(enemies.take(rows), rows), pad(enemies.drop(rows), rows))
     }
 
     /** Most players seen on one side during this arena match, so the layout doesn't shrink back. */
@@ -305,10 +408,20 @@ class TargetFramesView(
     private fun sharedName(slot: Int, u: LinkUnit): Boolean =
         u.mustClick || NEARBY_SLOTS.any { it != slot && LinkState.unit(it)?.name == u.name }
 
+    /** WoWMobileLink's clear-target key (Alt+Ctrl+B). */
+    private fun clearTarget() = chordCtrlAlt(XKeycode.KEY_F2)
+
+    /** Focus your target (Alt+Ctrl+F3). */
+    private fun focusTarget() = chordCtrlAlt(XKeycode.KEY_F3)
+
+    /** Ctrl+Alt+[k]: WoWMobileLink's keys F1 target focus, F2 clear target, F3 set focus, F4 clear focus. */
+    private fun chordCtrlAlt(k: XKeycode) = SlashTyper.chord(xServer, k, false, onSuspendModifiers, onResumeModifiers)
+
     /** Target without clicking: the slot's hidden key, else type /target. */
     private fun targetByKey(slot: Int, u: LinkUnit) {
         val key = targetKey(slot)
         if (slot in 90..99 && !u.noKey) SlashTyper.chord(xServer, DIGIT_KEYS[slot - 90], true, onSuspendModifiers, onResumeModifiers, ctrl = false)
+        else if (slot in RAID_SLOTS && !u.noKey) SlashTyper.chord(xServer, RAID_KEYS[slot - 100], true, onSuspendModifiers, onResumeModifiers, ctrl = false)
         else if (key != null && !u.noKey) SlashTyper.chord(xServer, key.first, key.second, onSuspendModifiers, onResumeModifiers)
         else commandFor(slot, u)?.let { SlashTyper.type(xServer, it, onSuspendModifiers, onResumeModifiers) }
     }
@@ -327,6 +440,7 @@ class TargetFramesView(
             in 60..69 -> k("ASDFGHJZXC"[slot - 60]) to false
             in 70..79 -> PUNCT_KEYS[slot - 70] to false
             in 80..89 -> PUNCT_KEYS[slot - 80] to true
+            FOCUS_SLOT -> XKeycode.KEY_F1 to false
             else -> null
         }
     }
@@ -335,12 +449,18 @@ class TargetFramesView(
         0 -> "/target player"
         in 1..4 -> "/target party$slot"
         in 30..34 -> "/target arena${slot - 29}"
+        in RAID_SLOTS -> "/target raid${slot - 99}"
+        FOCUS_SLOT -> "/target focus"
         // Names are typed letter by letter; names with letters the pad can't type are skipped.
         else -> unit.name.takeIf { n -> n.isNotEmpty() && n.all { SlashTyper.canType(it) } }?.let { "/targetexact $it" }
     }
 
     private inner class UnitBox(var slot: Int) : View(context) {
         private var unit: LinkUnit? = null
+        /** Double tap: when the last tap was, and a clear-target waiting to see if a second tap comes. */
+        private var lastTapAt = 0L
+        private var lastTapSlot = -1
+        private val pendingClear = Runnable { clearTarget() }
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
         private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
@@ -424,6 +544,18 @@ class TargetFramesView(
                 MotionEvent.ACTION_UP -> {
                     alpha = 1f
                     val u = unit ?: return true
+                    val now = System.currentTimeMillis()
+                    val second = now - lastTapAt < DOUBLE_TAP_MS && lastTapSlot == slot && slot != FOCUS_SLOT
+                    lastTapAt = if (second) 0L else now
+                    lastTapSlot = slot
+                    // Double tap: the first tap targeted it (or was about to clear it): focus it.
+                    if (second) { removeCallbacks(pendingClear); focusTarget(); return true }
+                    // Already your target: tap again to clear the target (a focus stays focused),
+                    // once it's clear this isn't the start of a double tap.
+                    if (u.isTarget) {
+                        if (slot == FOCUS_SLOT) clearTarget() else postDelayed(pendingClear, DOUBLE_TAP_MS)
+                        return true
+                    }
                     // Click the plate only when its name is shared by another nearby unit: the
                     // key targets by name, which works while moving, where a plate's position
                     // is already out of date by the time the click lands.
@@ -465,13 +597,21 @@ class TargetFramesView(
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     companion object {
-        private const val KEY_MODE = "target_mode"
+        /** The mode picked this game session; null = Nearby. */
+        private var sessionMode: Mode? = null
+
+        /** Back to Nearby: called when the game starts. */
+        @JvmStatic fun resetMode() { sessionMode = null }
         private const val MENU_GREY = 0xFF4A4A4A.toInt()
+        /** Two taps on a box within this time: target it and set it as your focus. */
+        private const val DOUBLE_TAP_MS = 350L
         private const val PLATE_HOVER_MS = 80L
         /** Nearby slots (50-59 are the NPC tab, which repeats friendly NPCs). */
         private val NEARBY_SLOTS = (40..49) + (60..89)
         /** Alt+Shift+1-0: battleground slots 90-99 (see KEYS in WoWMobileLink.lua). */
         private val DIGIT_KEYS = "1234567890".map { XKeycode.valueOf("KEY_" + it) }
+        /** Alt+Shift+letter (no L): raid slots 100-124 (see KEYS in WoWMobileLink.lua). */
+        private val RAID_KEYS = "ABCDEFGHIJKMNOPQRSTUVWXYZ".map { XKeycode.valueOf("KEY_" + it) }
         /** Keys for slots 70-79 (with Ctrl+Alt) and 80-89 (Ctrl+Alt+Shift); see KEYS in WoWMobileLink.lua. */
         private val PUNCT_KEYS = listOf(
             XKeycode.KEY_MINUS, XKeycode.KEY_EQUAL, XKeycode.KEY_BRACKET_LEFT, XKeycode.KEY_BRACKET_RIGHT, XKeycode.KEY_SEMICOLON,

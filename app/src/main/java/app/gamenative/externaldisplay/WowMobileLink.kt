@@ -14,7 +14,13 @@ import java.nio.ByteOrder
  */
 data class LinkUnit(val slot: Int, val classId: Int, val hp: Int, val flags: Int, val name: String, val seenAt: Long, val plateX: Int = 0, val plateY: Int = 0, val num: Int = 0) {
     /** Name as shown: "(2) Wild Boar" when several nearby units share it (same number as on its plate). */
-    val label get() = if (num and 127 > 0) "(${num and 127}) $name" else name
+    val label get() = when {
+        slot == FOCUS_SLOT -> "Focus: $name"
+        num and 127 > 0 && slot !in RAID_SLOTS -> "(${num and 127}) $name"
+        else -> name
+    }
+    /** Raid slots (100-124, raid1-25): the raid group, 1-8. */
+    val raidGroup get() = if (slot in RAID_SLOTS) num and 127 else 0
     /** The addon says a tap must click the plate (name shared with another plate or with an off-screen target). */
     val mustClick get() = num and 128 != 0
     val dead get() = flags and 1 != 0
@@ -24,6 +30,13 @@ data class LinkUnit(val slot: Int, val classId: Int, val hp: Int, val flags: Int
     val noKey get() = flags and 128 != 0
     val hpKnown get() = hp in 0..100
 }
+
+/** Slots of raid1-25 (see WoWMobileLink.lua). */
+val RAID_SLOTS = 100..124
+/** The focus unit's slot. */
+const val FOCUS_SLOT = 125
+/** Your current target (only to know there is one). */
+const val TARGET_SLOT = 129
 
 object LinkState {
     const val MODE_WORLD = 0

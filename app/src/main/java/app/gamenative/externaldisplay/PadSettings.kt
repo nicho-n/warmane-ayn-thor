@@ -74,6 +74,13 @@ object PadSettings {
     /** 0 = tab bar at the top, 1 = at the bottom. */
     const val TAB_POS = "tab_pos"
     /** Target page: whether Nearby also lists friendly NPCs (off) and friendly players (on). */
+    /** Party mode: most nearby enemies listed (1-15), and whether they get two columns. */
+    const val PARTY_MAX_ENEMIES = "party_max_enemies"
+    const val PARTY_EXTRA_COLUMN = "party_extra_column"
+    /** Controller button combination for a forward jump: 0 off, 1 L2+R1, 2 R2+L1, 3 L2+L1, 4 R2+R1. */
+    const val FORWARD_JUMP = "forward_jump"
+    /** The Target page's focus row (Clear Focus / Set Focus or your focus). */
+    const val FOCUS_BAR = "focus_bar"
     /** XP bar (ThorControls addon, see XpBarSync): shown, numbers on it, width (% of D-pad Left to A), height, offsets. */
     const val XP_SHOW = "xp_show"
     const val XP_TEXT = "xp_text"
@@ -157,6 +164,10 @@ object PadSettings {
         MOD_ALT to true,
         SEC_NUMBERS to true,
         CAMERA_SPEED to 100,
+        PARTY_MAX_ENEMIES to 10,
+        PARTY_EXTRA_COLUMN to false,
+        FOCUS_BAR to true,
+        FORWARD_JUMP to 0,
         XP_SHOW to true,
         XP_TEXT to false,
         XP_WIDTH to 100,
@@ -333,6 +344,9 @@ object PadSettings {
 
     /** Right-stick camera speed as a factor (1 = original); for Java, where int() can't be called. */
     fun cameraSpeedFactor(): Float = int(CAMERA_SPEED) / 100f
+
+    /** [int] for Java, where a method named int can't be called. */
+    fun intValue(key: String): Int = int(key)
 
     fun int(key: String): Int {
         val def = DEFAULTS[key] as? Int ?: 0

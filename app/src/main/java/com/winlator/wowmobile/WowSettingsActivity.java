@@ -37,6 +37,7 @@ public class WowSettingsActivity extends AppCompatActivity {
     private CheckBox cbTouchControls;
     private CheckBox cbAutoLogin;
     private EditText etPassword;
+    private EditText etAccountName;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,6 +72,8 @@ public class WowSettingsActivity extends AppCompatActivity {
 
         cbAutoLogin = findViewById(R.id.CBAutoLogin);
         etPassword = findViewById(R.id.ETPassword);
+        etAccountName = findViewById(R.id.ETAccountName);
+        etAccountName.setText(LoginSecret.accountName(this));
         cbAutoLogin.setChecked(LoginSecret.isEnabled(this));
         if (LoginSecret.hasPassword(this)) etPassword.setHint(R.string.wow_password_saved_hint);
         etPassword.setEnabled(cbAutoLogin.isChecked());
@@ -146,8 +149,13 @@ public class WowSettingsActivity extends AppCompatActivity {
         PreferenceManager.getDefaultSharedPreferences(this).edit()
             .putBoolean(WowContainerHelper.PREF_TOUCH_CONTROLS, cbTouchControls.isChecked()).apply();
 
+        String accountName = etAccountName.getText().toString().trim();
         String password = etPassword.getText().toString();
         if (cbAutoLogin.isChecked()) {
+            if (accountName.isEmpty()) {
+                AppUtils.showToast(this, R.string.wow_auto_login_no_account);
+                return;
+            }
             if (password.isEmpty() && !LoginSecret.hasPassword(this)) {
                 AppUtils.showToast(this, R.string.wow_auto_login_no_password);
                 return;
@@ -158,6 +166,7 @@ public class WowSettingsActivity extends AppCompatActivity {
             }
         }
         else LoginSecret.clear(this);
+        LoginSecret.setAccountName(this, accountName);
 
         provisioner.ensureRealmlist(host);
         provisioner.setConfigValue("gxResolution", RESOLUTIONS[sResolution.getSelectedItemPosition()]);
