@@ -27,6 +27,8 @@ set of action bar buttons. Other buttons:
 
 | Button | Action |
 |---|---|
+| A / B / X / Y | Action bar |
+| D-pad | Action bar |
 | L1 | Target nearest enemy |
 | L1 + R2 | Minimap zoom in |
 | R1 | Jump |
