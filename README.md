@@ -1,5 +1,9 @@
 # Warmane on AYN Thor
 
+<a href="https://buymeacoffee.com/nichon"><img src="images/buymeacoffee-qr.png" width="200" alt="Buy Me a Coffee QR code (buymeacoffee.com/nichon)"></a>
+
+If you like the app, please consider [buying me a coffee](https://buymeacoffee.com/nichon).
+
 An Android launcher for playing [Warmane](https://www.warmane.com) (World of Warcraft
 3.3.5a) on the AYN Thor. It installs as *Warmane Ayn Thor Launcher*.
 
