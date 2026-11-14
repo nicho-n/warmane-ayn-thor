@@ -60,6 +60,7 @@ public class WowMobileActivity extends AppCompatActivity {
         tvRealmlist = findViewById(R.id.TVWowRealmlist);
         btPlay = findViewById(R.id.BTPlay);
 
+        applyPadStyle();
         btPlay.setOnClickListener((v) -> onPlay());
         findViewById(R.id.BTSelectFolder).setOnClickListener((v) -> showFolderPicker());
         findViewById(R.id.BTWowSettings).setOnClickListener((v) -> startActivity(new Intent(this, WowSettingsActivity.class)));
@@ -106,6 +107,38 @@ public class WowMobileActivity extends AppCompatActivity {
         }
         if (up && btPlay.isEnabled() && !preloaderDialog.isShowing()) onPlay();
         return true;
+    }
+
+    /** Same look as the bottom-screen pad: dark stone buttons, gold trim, cream serif text. */
+    private void applyPadStyle() {
+        app.gamenative.externaldisplay.PadTheme theme = app.gamenative.externaldisplay.PadTheme.Companion.getDEFAULT();
+        float density = getResources().getDisplayMetrics().density;
+        findViewById(R.id.LLWowRoot).setBackgroundColor(theme.getBackground());
+        findViewById(R.id.LLWowStatusPanel).setBackground(theme.groupBackground(density, false));
+        for (int id : new int[]{R.id.TVWowTitle, R.id.TVWowStatus}) {
+            TextView tv = findViewById(id);
+            tv.setTextColor(theme.getText());
+            tv.setTypeface(theme.getTypeface());
+        }
+        for (int id : new int[]{R.id.TVWowSubtitle, R.id.TVWowFolder, R.id.TVWowRealmlist}) {
+            ((TextView)findViewById(id)).setTextColor((theme.getText() & 0x00FFFFFF) | 0xB0000000);
+        }
+        for (int id : new int[]{R.id.BTPlay, R.id.BTSelectFolder, R.id.BTWowSettings, R.id.BTDonate}) {
+            Button b = findViewById(id);
+            android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
+            states.addState(new int[]{android.R.attr.state_pressed}, theme.buttonBackground(density, 10f, true, false, false, false, false, null, 1f));
+            states.addState(new int[]{}, theme.buttonBackground(density, 10f, false, false, false, id == R.id.BTPlay, false, null, 1f));
+            b.setBackgroundTintList(null);
+            b.setBackground(states);
+            b.setStateListAnimator(null);
+            b.setTextColor(theme.getText());
+            b.setTypeface(theme.getTypeface());
+        }
+        for (int id : new int[]{R.id.BTAdvanced, R.id.BTContainerSettings}) {
+            Button b = findViewById(id);
+            b.setTextColor((theme.getText() & 0x00FFFFFF) | 0xB0000000);
+            b.setTypeface(theme.getTypeface());
+        }
     }
 
     /** Shows the focus border on Play, so it's clear A starts the game. */
