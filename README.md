@@ -17,6 +17,29 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 Also: optional auto-login (password encrypted on the device), an optional touch-controls
 overlay on the game screen, and Box64 0.4.5, which Warmane accepts.
 
+## Default controller layout
+
+Characters that don't have ConsolePort bindings yet start with this layout. Change it in
+ConsolePort's binding menu; `/thor defaults` puts it back on the current character.
+
+| Button | Alone | L2 held | R2 held | L2 + R2 held |
+|---|---|---|---|---|
+| A | Action bar 5 | Action bar 9 | Right bar 2, button 5 | Utility ring |
+| B | Action bar 3 | Action bar 8 | Bottom-left bar 3 | Open all bags |
+| X | Action bar 1 | Action bar 6 | Bottom-left bar 1 | Bottom-left bar 6 |
+| Y | Action bar 2 | Action bar 7 | Bottom-left bar 2 | Bottom-left bar 7 |
+| L1 | Target nearest enemy | Bottom-left bar 4 | Minimap zoom in | Bottom-left bar 9 |
+| R1 | Jump | Action bar 10 | Bottom-left bar 5 | Bottom-left bar 10 |
+| D-pad up | Bottom-left bar 12 | Camera zoom in | Bottom-right bar 6 | Bottom-right bar 10 |
+| D-pad down | Action bar 11 | Camera zoom out | Bottom-right bar 8 | Bottom-right bar 12 |
+| D-pad left | Bottom-left bar 11 | Bottom-right bar 1 | Bottom-right bar 5 | Bottom-right bar 9 |
+| D-pad right | Run/walk | Bottom-right bar 3 | Bottom-right bar 7 | Bottom-right bar 11 |
+| Select | Target nearest friend | World map | Camera zoom out | Camera zoom in |
+| Start | Interact with the unit under the pointer | Game menu | Raid cursor | Open chat |
+
+Left stick moves, right stick turns the camera, R3 switches the right stick to moving the
+pointer and L3 clicks. L2 and R2 are the layer modifiers.
+
 ## Requirements
 
 - AYN Thor. Other Android devices may run it, but the bottom-screen features need the

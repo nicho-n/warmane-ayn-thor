@@ -10,6 +10,10 @@
 --  3. Pet bar: hides Blizzard's default pet bar (ConsolePort has its own).
 --  4. XP bar: lifts ConsolePort's XP/reputation bar off the screen edge.
 --  5. Triggers: hides the big L2/R2 icons on the ConsolePort bar (toggleable).
+--  6. Cursor trail: hides ConsolePort's controller icon next to the pointer.
+--  7. Default bindings: characters without ConsolePort bindings get the layout in
+--     DEFAULT_BINDINGS (Select targets a friend, L1 an enemy, Start interacts with
+--     the unit under the pointer; see README).
 --
 -- /thor for status and options.
 
@@ -26,11 +30,58 @@ local CALIBRATION = {
 -- ConsolePort settings that go with it: no Guide button, no extra trigger buttons
 -- (L2/R2 are modifiers, L3/R3 and the right stick are handled by the launcher).
 local CP_SETTINGS = {
-    skipGuideBtn = true,
+    skipGuideBtn = true, skipCalibration = true,
     skipCP_T3 = true, skipCP_T4 = true, skipCP_T5 = true, skipCP_T6 = true,
     disableStickMouse = true,
 }
 local MODIFIERS = { "", "SHIFT-", "CTRL-", "CTRL-SHIFT-" }
+
+-- Default controller bindings for characters that have none yet (see README).
+-- Per button: no modifier, L2 (SHIFT-), R2 (CTRL-), L2+R2 (CTRL-SHIFT-).
+local DEFAULT_BINDINGS = {
+    CP_R_LEFT  = { [""] = "ACTIONBUTTON1", ["SHIFT-"] = "ACTIONBUTTON6", ["CTRL-"] = "MULTIACTIONBAR1BUTTON1", ["CTRL-SHIFT-"] = "MULTIACTIONBAR1BUTTON6" },  -- X
+    CP_R_UP    = { [""] = "ACTIONBUTTON2", ["SHIFT-"] = "ACTIONBUTTON7", ["CTRL-"] = "MULTIACTIONBAR1BUTTON2", ["CTRL-SHIFT-"] = "MULTIACTIONBAR1BUTTON7" },  -- Y
+    CP_R_RIGHT = { [""] = "ACTIONBUTTON3", ["SHIFT-"] = "ACTIONBUTTON8", ["CTRL-"] = "MULTIACTIONBAR1BUTTON3", ["CTRL-SHIFT-"] = "OPENALLBAGS" },             -- B
+    CP_R_DOWN  = { [""] = "ACTIONBUTTON5", ["SHIFT-"] = "ACTIONBUTTON9", ["CTRL-"] = "MULTIACTIONBAR4BUTTON5", ["CTRL-SHIFT-"] = "CLICK ConsolePortUtilityToggle:LeftButton" }, -- A
+    CP_T1      = { [""] = "TARGETNEARESTENEMY", ["SHIFT-"] = "MULTIACTIONBAR1BUTTON4", ["CTRL-"] = "MINIMAPZOOMIN", ["CTRL-SHIFT-"] = "MULTIACTIONBAR1BUTTON9" },  -- L1
+    CP_T2      = { [""] = "JUMP", ["SHIFT-"] = "ACTIONBUTTON10", ["CTRL-"] = "MULTIACTIONBAR1BUTTON5", ["CTRL-SHIFT-"] = "MULTIACTIONBAR1BUTTON10" },         -- R1
+    CP_L_UP    = { [""] = "MULTIACTIONBAR1BUTTON12", ["SHIFT-"] = "CAMERAZOOMIN", ["CTRL-"] = "MULTIACTIONBAR2BUTTON6", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON10" },
+    CP_L_DOWN  = { [""] = "ACTIONBUTTON11", ["SHIFT-"] = "CAMERAZOOMOUT", ["CTRL-"] = "MULTIACTIONBAR2BUTTON8", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON12" },
+    CP_L_LEFT  = { [""] = "MULTIACTIONBAR1BUTTON11", ["SHIFT-"] = "MULTIACTIONBAR2BUTTON1", ["CTRL-"] = "MULTIACTIONBAR2BUTTON5", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON9" },
+    CP_L_RIGHT = { [""] = "TOGGLERUN", ["SHIFT-"] = "MULTIACTIONBAR2BUTTON3", ["CTRL-"] = "MULTIACTIONBAR2BUTTON7", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON11" },
+    CP_X_LEFT  = { [""] = "TARGETNEARESTFRIEND", ["SHIFT-"] = "TOGGLEWORLDMAP", ["CTRL-"] = "CP_CAMZOOMOUT", ["CTRL-SHIFT-"] = "CP_CAMZOOMIN" },        -- Select
+    CP_X_RIGHT = { [""] = "INTERACTMOUSEOVER", ["SHIFT-"] = "TOGGLEGAMEMENU", ["CTRL-"] = "CLICK ConsolePortRaidCursorToggle:LeftButton", ["CTRL-SHIFT-"] = "OPENCHAT" }, -- Start
+    CP_T_L3    = {},
+    CP_T_R3    = {},
+}
+
+local function copy(t)
+    local out = {}
+    for k, v in pairs(t) do out[k] = type(v) == "table" and copy(v) or v end
+    return out
+end
+
+-- ConsolePortLK keys a character's binding set by class number (its "spec" on 3.3.5).
+local CLASS_IDS = { WARRIOR = 1, PALADIN = 2, HUNTER = 3, ROGUE = 4, PRIEST = 5, DEATHKNIGHT = 6,
+                    SHAMAN = 7, MAGE = 8, WARLOCK = 9, DRUID = 10 }
+
+local function classSetId()
+    local _, class = UnitClass("player")
+    return CLASS_IDS[class or ""] or 1
+end
+
+-- Gives this character the default bindings if it has none. ConsolePort reads the set
+-- at login (after this addon loads), so nothing else is needed.
+local function applyDefaultBindings(force)
+    if type(ConsolePortBindingSet) ~= "table" then ConsolePortBindingSet = {} end
+    local id = classSetId()
+    local set = ConsolePortBindingSet[id]
+    if force or type(set) ~= "table" or not next(set) then
+        ConsolePortBindingSet[id] = copy(DEFAULT_BINDINGS)
+        return true
+    end
+    return false
+end
 
 local defaults = { petbar = true, xpLift = 10, hideTriggers = true, hideTrail = true }
 local db
@@ -152,12 +203,6 @@ local TRIGGER_LAYOUT = {
     CP_T4 = { point = { "RIGHT", -456, 56 }, dir = "left", size = 64 },
 }
 
-local function copy(t)
-    local out = {}
-    for k, v in pairs(t) do out[k] = type(v) == "table" and copy(v) or v end
-    return out
-end
-
 local function applyTriggers()
     local cfg = ConsolePortBarSetup
     if not db or not cfg or not cfg.layout then return false end
@@ -202,6 +247,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
             db = ThorControlsDB
             for k, v in pairs(defaults) do if db[k] == nil then db[k] = v end end
             applyCalibration()
+            applyDefaultBindings()
         elseif arg1 == "ConsolePortBar" then
             applyTriggers()
             hookWatchBars()
@@ -247,6 +293,10 @@ SlashCmdList.THORCONTROLS = function(input)
         db.hideTrail = value == "off"
         applyTrail()
         msg("Controller icon next to the pointer " .. onoff(not db.hideTrail))
+    elseif cmd == "defaults" then
+        if InCombatLockdown() then msg("Leave combat first."); return end
+        applyDefaultBindings(true)
+        ReloadUI()
     elseif cmd == "calibrate" then
         if applyCalibration() then msg("Controller calibration restored.") end
         reloadConsolePortBindings()
@@ -258,5 +308,6 @@ SlashCmdList.THORCONTROLS = function(input)
         msg("/thor triggers on|off  - show the L2/R2 icons on the ConsolePort bar (reloads)")
         msg("/thor trail on|off  - controller icon next to the pointer")
         msg("/thor calibrate  - put the controller calibration back")
+        msg("/thor defaults  - replace this character's controller bindings with the defaults (reloads)")
     end
 end
