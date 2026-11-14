@@ -879,7 +879,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private final Runnable linkKeepAlive = new Runnable() {
         @Override
         public void run() {
-            sendLinkChord(com.winlator.xserver.XKeycode.KEY_K);
+            // Only when the data row isn't coming through (page just opened, or the UI was
+            // reloaded): every chord makes ConsolePort redraw all its buttons for each modifier
+            // change, which showed as a hitch every few seconds in combat.
+            long since = System.currentTimeMillis() - app.gamenative.externaldisplay.LinkState.INSTANCE.getLastPacketAt();
+            if (since > 3000) sendLinkChord(com.winlator.xserver.XKeycode.KEY_K);
             signalHandler.postDelayed(this, 5000);
         }
     };

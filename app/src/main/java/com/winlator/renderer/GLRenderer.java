@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
+import android.opengl.GLES30;
 import android.opengl.GLSurfaceView;
 
 import androidx.core.graphics.ColorUtils;
@@ -429,8 +430,14 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
      * Used by the bottom pad's Target page (WowMobileLinkReader).
      */
     public void readTextureRow(final Drawable drawable, final int row, final Callback<byte[]> callback) {
+        // The copy goes into a GPU buffer and is picked up once the GPU has got to it (checked
+        // every few ms), so neither the screen nor the game waits for the GPU to finish its
+        // queued work. A plain glReadPixels did wait, which showed as frame drops whenever the
+        // GPU was busy (spell effects).
         xServerView.queueEvent(() -> {
-            byte[] result = null;
+            int[] pbo = new int[1];
+            long fence = 0;
+            int size = 0;
             synchronized (drawable.renderLock) {
                 Texture texture = drawable.getTexture();
                 texture.updateFromDrawable();
@@ -440,17 +447,52 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                     GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo[0]);
                     GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, texture.getTextureId(), 0);
                     if (GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) == GLES20.GL_FRAMEBUFFER_COMPLETE) {
-                        ByteBuffer buffer = ByteBuffer.allocateDirect(drawable.width * 4).order(ByteOrder.nativeOrder());
-                        GLES20.glReadPixels(0, row, drawable.width, 1, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buffer);
-                        result = new byte[drawable.width * 4];
-                        buffer.get(result);
+                        size = drawable.width * 4;
+                        GLES30.glGenBuffers(1, pbo, 0);
+                        GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, pbo[0]);
+                        GLES30.glBufferData(GLES30.GL_PIXEL_PACK_BUFFER, size, null, GLES30.GL_STREAM_READ);
+                        GLES30.glReadPixels(0, row, drawable.width, 1, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, 0);
+                        GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, 0);
+                        fence = GLES30.glFenceSync(GLES30.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+                        GLES20.glFlush();
                     }
                     GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
                     GLES20.glDeleteFramebuffers(1, fbo, 0);
                 }
             }
-            callback.call(result);
+            if (fence == 0) {
+                if (pbo[0] != 0) GLES30.glDeleteBuffers(1, pbo, 0);
+                callback.call(null);
+                return;
+            }
+            collectRow(pbo[0], fence, size, System.currentTimeMillis() + 500, callback);
         });
+    }
+
+    private static final android.os.Handler readbackHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    /** GL thread: hands over the row once the GPU has written it; until then looks again in 4 ms. */
+    private void collectRow(int pbo, long fence, int size, long giveUpAt, Callback<byte[]> callback) {
+        int status = GLES30.glClientWaitSync(fence, 0, 0);
+        boolean done = status == GLES30.GL_ALREADY_SIGNALED || status == GLES30.GL_CONDITION_SATISFIED;
+        if (!done && status != GLES30.GL_WAIT_FAILED && System.currentTimeMillis() < giveUpAt) {
+            readbackHandler.postDelayed(() -> xServerView.queueEvent(() -> collectRow(pbo, fence, size, giveUpAt, callback)), 4);
+            return;
+        }
+        byte[] result = null;
+        if (done) {
+            GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, pbo);
+            java.nio.Buffer mapped = GLES30.glMapBufferRange(GLES30.GL_PIXEL_PACK_BUFFER, 0, size, GLES30.GL_MAP_READ_BIT);
+            if (mapped instanceof ByteBuffer) {
+                result = new byte[size];
+                ((ByteBuffer) mapped).get(result);
+                GLES30.glUnmapBuffer(GLES30.GL_PIXEL_PACK_BUFFER);
+            }
+            GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, 0);
+        }
+        GLES30.glDeleteSync(fence);
+        GLES30.glDeleteBuffers(1, new int[]{pbo}, 0);
+        callback.call(result);
     }
 
     public void takeWindowScreenshot(final Drawable drawable, final Callback<Bitmap> callback) {

@@ -250,6 +250,49 @@ hooksecurefunc("CooldownFrame_SetTimer", function(self, start, duration, enable)
 end)
 
 ---------------------------------------------------------------------------
+-- 11. Default action bars: hidden while ConsolePort's bar is in use. Newer
+-- ConsolePortBar versions do this themselves; 1.0.4 doesn't. Same steps as
+-- ConsolePortBar 1.5's Custom/Blizzard.lua (from Bartender4). Out of combat only.
+---------------------------------------------------------------------------
+local blizzHider = CreateFrame("Frame")
+blizzHider:Hide()
+
+local function hideBlizzardBars()
+    if not IsAddOnLoaded("ConsolePortBar") then return end
+    if MainMenuBarArtFrame:GetParent() ~= MainMenuBar then return end -- already done
+    if InCombatLockdown() then pending.blizz = true; return end
+    pending.blizz = nil
+    for _, bar in pairs({ MainMenuBarArtFrame, MainMenuBarMaxLevelBar, VehicleMenuBar, BonusActionBarFrame,
+                          MultiCastActionBarFrame, MultiBarLeft, MultiBarRight, MultiBarBottomLeft, MultiBarBottomRight }) do
+        bar:SetParent(blizzHider)
+    end
+    MainMenuBarArtFrame:Hide()
+    for _, n in pairs({ "ActionButton", "BonusActionButton", "MultiBarLeftButton", "MultiBarRightButton",
+                        "MultiBarBottomLeftButton", "MultiBarBottomRightButton" }) do
+        for i = 1, 12 do
+            local b = _G[n .. i]
+            if b then
+                b:Hide()
+                b:UnregisterAllEvents()
+                b:SetAttribute("statehidden", true)
+            end
+        end
+    end
+    for _, k in pairs({ "MainMenuBar", "BonusActionBar", "ShapeshiftBarFrame", "PossessBarFrame", "PETACTIONBAR_YPOS" }) do
+        UIPARENT_MANAGED_FRAME_POSITIONS[k] = nil
+    end
+    MainMenuBar:EnableMouse(false)
+    for _, f in pairs({ MainMenuExpBar, ExhaustionTick, MainMenuBarPerformanceBar, ReputationWatchBar }) do
+        f:SetParent(blizzHider)
+    end
+    for _, bar in pairs({ ShapeshiftBarFrame, PossessBarFrame }) do
+        bar:UnregisterAllEvents()
+        bar:SetParent(blizzHider)
+        bar:Hide()
+    end
+end
+
+---------------------------------------------------------------------------
 -- Events
 ---------------------------------------------------------------------------
 events:RegisterEvent("ADDON_LOADED")
@@ -277,6 +320,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
         reloadConsolePortBindings()
         applyCamera()
         if IsAddOnLoaded("ConsolePortBar") then hookWatchBars() end
+        hideBlizzardBars()
         applyPetBar()
         applyTrail()
     elseif event == "PLAYER_ENTERING_WORLD" then
@@ -288,8 +332,60 @@ events:SetScript("OnEvent", function(_, event, arg1)
         if pending.cpBindings then reloadConsolePortBindings() end
         if pending.camera then applyCamera() end
         if pending.pet then applyPetBar() end
+        if pending.blizz then hideBlizzardBars() end
     end
 end)
+
+---------------------------------------------------------------------------
+-- 10. Spike finder (/thor spikes on): reports each frame that took over
+-- SPIKE_MS, with the events handled during it and, when /thor profile is on,
+-- which addons ran how long in it. Diagnosis only; off by default, not saved.
+---------------------------------------------------------------------------
+local SPIKE_MS = 150
+local spikes = CreateFrame("Frame")
+local spikeEvents, spikeCpu, spikeScript = {}, {}, 0
+local lastReport = 0
+
+local function snapshotCpu()
+    UpdateAddOnCPUUsage()
+    for i = 1, GetNumAddOns() do
+        if IsAddOnLoaded(i) then spikeCpu[i] = GetAddOnCPUUsage(i) end
+    end
+    spikeScript = GetScriptCPUUsage()
+end
+
+spikes:SetScript("OnEvent", function(_, event)
+    spikeEvents[event] = (spikeEvents[event] or 0) + 1
+end)
+spikes:SetScript("OnUpdate", function(_, elapsed)
+    local profiling = GetCVar("scriptProfile") == "1"
+    if elapsed * 1000 >= SPIKE_MS and GetTime() - lastReport > 1 then
+        lastReport = GetTime()
+        local ev = {}
+        for e, n in pairs(spikeEvents) do ev[#ev + 1] = n > 1 and (e .. "x" .. n) or e end
+        table.sort(ev)
+        local line = string.format("Slow frame %d ms. Events: %s", elapsed * 1000, #ev > 0 and table.concat(ev, ", ") or "none")
+        msg(line)
+        if profiling then
+            local before, beforeScript = {}, spikeScript
+            for i, v in pairs(spikeCpu) do before[i] = v end
+            snapshotCpu()
+            local list = {}
+            for i, v in pairs(spikeCpu) do
+                local d = v - (before[i] or v)
+                if d >= 1 then list[#list + 1] = { name = GetAddOnInfo(i), ms = d } end
+            end
+            table.sort(list, function(a, b) return a.ms > b.ms end)
+            local parts = {}
+            for k = 1, math.min(6, #list) do parts[k] = string.format("%s %d", list[k].name, list[k].ms) end
+            msg(string.format("  Addon code in it: %d ms of %d. %s", spikeScript - beforeScript, elapsed * 1000, table.concat(parts, ", ")))
+        end
+    elseif profiling then
+        snapshotCpu()
+    end
+    wipe(spikeEvents)
+end)
+spikes:Hide()
 
 ---------------------------------------------------------------------------
 -- /thor
@@ -337,6 +433,18 @@ SlashCmdList.THORCONTROLS = function(input)
                 total > 0 and math.floor(list[i].ms / total * 100 + 0.5) or 0))
         end
         msg("/thor profile off when done.")
+    elseif cmd == "spikes" and (value == "on" or value == "off") then
+        if value == "on" then
+            wipe(spikeEvents)
+            if GetCVar("scriptProfile") == "1" then snapshotCpu() end
+            spikes:RegisterAllEvents()
+            spikes:Show()
+            msg("Reporting frames slower than " .. SPIKE_MS .. " ms. /thor spikes off to stop.")
+        else
+            spikes:UnregisterAllEvents()
+            spikes:Hide()
+            msg("Spike reports off.")
+        end
     elseif cmd == "castbar" and (value == "on" or value == "off") then
         if InCombatLockdown() then msg("Leave combat first."); return end
         db.defaultCastBar = value == "on"
@@ -361,6 +469,7 @@ SlashCmdList.THORCONTROLS = function(input)
         msg("/thor castbar on|off  - WoW's own cast bar instead of ConsolePort's (reloads)")
         msg("/thor gcd on|off  - global cooldown sweep on the action buttons")
         msg("/thor profile on|off, /thor cpu  - measure which addons use the most CPU")
+        msg("/thor spikes on|off  - report slow frames and what ran in them")
         msg("/thor trail on|off  - controller icon next to the pointer")
         msg("/thor calibrate  - put the controller calibration back")
         msg("/thor defaults  - replace this character's controller bindings with the defaults (reloads)")

@@ -633,6 +633,8 @@ strip:SetScript("OnUpdate", function(_, elapsed)
 end)
 
 function WoWMobileLink_SetActive(on)
+    -- Already in that state: nothing to do (laying out 320 cells again is not free).
+    if active == not not on then return end
     active = not not on
     if active then
         layout()

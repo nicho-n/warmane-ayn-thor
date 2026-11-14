@@ -131,9 +131,13 @@ class WowMobileLinkReader(private val xServer: XServer) {
     internal fun findGameWindow(): Window? {
         gameWindow?.let { w -> if (w.attributes.isMapped && w.content != null) return w }
         val list = candidates()
-        gameWindow = list.firstOrNull { hasPicture(it) } ?: list.firstOrNull()
-        gameWindow?.let { android.util.Log.i("WowMobileLink", "using window '${it.className}' ${it.width}x${it.height} id ${it.id}") }
-        return gameWindow
+        // Only a window that shows a picture is kept. While the game is still black (loading),
+        // the largest window is used for this look only: keeping it locked onto the empty
+        // wow.exe top-level window, and the login screen was then never seen.
+        val withPicture = list.firstOrNull { hasPicture(it) }
+        gameWindow = withPicture
+        withPicture?.let { android.util.Log.i("WowMobileLink", "using window '${it.className}' ${it.width}x${it.height} id ${it.id}") }
+        return withPicture ?: list.firstOrNull()
     }
 
     /** Which GPU row (flipped or not) and colour order held the data last time. */
