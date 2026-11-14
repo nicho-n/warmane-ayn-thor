@@ -14,8 +14,8 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 - **Opinionated console controls:** a fixed ConsolePort controller layout, plus **A** to
   play, enter the world and log in, and the **D-pad** to pick a character.
 
-Also: optional auto-login (password encrypted on the device) and Box64 0.4.5, which
-Warmane accepts.
+Also: optional auto-login (password encrypted on the device), an optional touch-controls
+overlay on the game screen, and Box64 0.4.5, which Warmane accepts.
 
 ## Requirements
 
@@ -36,16 +36,20 @@ Warmane accepts.
 
 ## Addons
 
-The app installs these from the `addons/` folder. Only their own folders are replaced;
-other addons are left alone. When the app has a newer version of an installed one, it
-updates it on Play.
+The app installs these. Only their own folders are replaced; other addons are left alone.
 
 | Addon | Installed | What it does |
 |---|---|---|
+| `ThorControls` | Always | Sets up ConsolePort for the controller layout and the right-stick camera; Thor layout fixes (`/thor`). |
 | `WoWMobileLink` | Always | Sends unit info to the touch targeting page. |
-| `ThorFixes` | With WoW Imito's addons | Hides WoW Imito's status strip when this app runs the game. |
+| ConsolePortLK | If ConsolePort is missing or is WoW Imito's | Controller UI. |
+| NotPlater | If missing | Nameplates. |
 
-ConsolePortLK is installed by the app on first launch if it isn't already there.
+`ThorControls` and `WoWMobileLink` are updated on Play when the app has a newer version.
+
+Coming from WoW Imito: its ConsolePort is replaced with the standard one and its addons
+(WoWImito, ImitoTouchUI) are moved to `Interface/AddOns-disabled`. Your ConsolePort
+bindings are kept.
 
 ## Building
 
@@ -70,11 +74,13 @@ build is unsigned.
 - [Box64](https://github.com/ptitSeb/box64) by ptitSeb and contributors.
 - [ConsolePortLK](https://github.com/leoaviana/ConsolePortLK) by leoaviana: bundled
   unmodified.
+- [NotPlater](https://github.com/RichSteini/NotPlater) by RichSteini: bundled (MIT).
 
 ## License
 
-Winlator and WoW Mobile are LGPL-2.1. The bottom-screen pad comes from the AYN Thor WoW
-Launcher, which is GPL-3, so this fork as a whole is GPL-3. Box64 source details:
+This fork is distributed under the GPL-3 (see `COPYING`): it contains the AYN Thor WoW
+Launcher's GPL-3 code. Winlator and WoW Mobile are LGPL-2.1 (see `LICENSE`). Bundled
+addons keep their own licenses. Box64 source details:
 `app/src/main/assets/box64/BOX64-0.4.5-SOURCE.txt`.
 
 World of Warcraft is a trademark of Blizzard Entertainment. This project is not

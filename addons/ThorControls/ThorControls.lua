@@ -32,7 +32,7 @@ local CP_SETTINGS = {
 }
 local MODIFIERS = { "", "SHIFT-", "CTRL-", "CTRL-SHIFT-" }
 
-local defaults = { petbar = true, xpLift = 10, hideTriggers = true }
+local defaults = { petbar = true, xpLift = 10, hideTriggers = true, hideTrail = true }
 local db
 local pending = {}
 local events = CreateFrame("Frame")
@@ -172,6 +172,22 @@ local function applyTriggers()
 end
 
 ---------------------------------------------------------------------------
+-- 6. Cursor trail: ConsolePort draws a controller-button icon (R3 when no interact
+-- button is set) next to the pointer over units. Hidden unless turned back on.
+---------------------------------------------------------------------------
+local trailHooked
+
+local function applyTrail()
+    local trail = ConsolePortCursorTrail
+    if not db or not trail then return end
+    if not trailHooked then
+        trailHooked = true
+        hooksecurefunc(trail, "Show", function(self) if db.hideTrail then self:Hide() end end)
+    end
+    if db.hideTrail then trail:Hide() else trail:Show() end
+end
+
+---------------------------------------------------------------------------
 -- Events
 ---------------------------------------------------------------------------
 events:RegisterEvent("ADDON_LOADED")
@@ -196,8 +212,10 @@ events:SetScript("OnEvent", function(_, event, arg1)
         applyCamera()
         if IsAddOnLoaded("ConsolePortBar") then hookWatchBars() end
         applyPetBar()
+        applyTrail()
     elseif event == "PLAYER_ENTERING_WORLD" then
         applyPetBar()
+        applyTrail()
     elseif event == "UNIT_PET" then
         if arg1 == "player" then applyPetBar() end
     elseif event == "PLAYER_REGEN_ENABLED" then
@@ -225,6 +243,10 @@ SlashCmdList.THORCONTROLS = function(input)
         if InCombatLockdown() then msg("Leave combat first."); return end
         db.hideTriggers = value == "off"
         if applyTriggers() then ReloadUI() else msg("ConsolePort bar isn't loaded; the change applies next time it loads.") end
+    elseif cmd == "trail" and (value == "on" or value == "off") then
+        db.hideTrail = value == "off"
+        applyTrail()
+        msg("Controller icon next to the pointer " .. onoff(not db.hideTrail))
     elseif cmd == "calibrate" then
         if applyCalibration() then msg("Controller calibration restored.") end
         reloadConsolePortBindings()
@@ -234,6 +256,7 @@ SlashCmdList.THORCONTROLS = function(input)
         msg("/thor xp <number>  - move the XP bar up (e.g. 10, 20; 0 = original)")
         msg("/thor petbar on|off  - hide Blizzard's default pet bar")
         msg("/thor triggers on|off  - show the L2/R2 icons on the ConsolePort bar (reloads)")
+        msg("/thor trail on|off  - controller icon next to the pointer")
         msg("/thor calibrate  - put the controller calibration back")
     end
 end
