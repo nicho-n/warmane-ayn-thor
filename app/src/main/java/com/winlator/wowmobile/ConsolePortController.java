@@ -83,10 +83,13 @@ public class ConsolePortController {
             case KeyEvent.KEYCODE_BUTTON_START: return XKeycode.KEY_F6;
             case KeyEvent.KEYCODE_BUTTON_L1:    return XKeycode.KEY_F7;
             case KeyEvent.KEYCODE_BUTTON_R1:    return XKeycode.KEY_F8;
-            case KeyEvent.KEYCODE_BUTTON_Y:     return XKeycode.KEY_F9;
-            case KeyEvent.KEYCODE_BUTTON_B:     return XKeycode.KEY_F10;
-            case KeyEvent.KEYCODE_BUTTON_A:     return XKeycode.KEY_F11;
-            case KeyEvent.KEYCODE_BUTTON_X:     return XKeycode.KEY_F12;
+            // The Thor's "Standard" controller mode reports face buttons by their printed
+            // letter, laid out like a Switch: X top, A right, B bottom, Y left. ConsolePort
+            // binds by position (F9 top, F10 right, F11 bottom, F12 left).
+            case KeyEvent.KEYCODE_BUTTON_X:     return XKeycode.KEY_F9;
+            case KeyEvent.KEYCODE_BUTTON_A:     return XKeycode.KEY_F10;
+            case KeyEvent.KEYCODE_BUTTON_B:     return XKeycode.KEY_F11;
+            case KeyEvent.KEYCODE_BUTTON_Y:     return XKeycode.KEY_F12;
             default: return null;
         }
     }

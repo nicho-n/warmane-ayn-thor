@@ -63,6 +63,12 @@ class ExternalPadSettingsView(
             addView(panelList)
             fillPanelOrder(panelList)
         }
+        section("Targeting", collapsible = true) {
+            addView(note("What the Target page's Nearby list shows besides enemies. Enemies and NPCs fill it from the top left going down, friendly players from the bottom right going up."))
+            addView(toggleRow(listOf("Nearby shows friendly NPCs" to PadSettings.NEARBY_FRIENDLY_NPC)))
+            addView(toggleRow(listOf("Nearby shows friendly players" to PadSettings.NEARBY_FRIENDLY_PLAYER)))
+            addView(toggleRow(listOf("Cursor back to screen centre after a target tap" to PadSettings.TARGET_CURSOR_CENTER)))
+        }
         section("Number block", collapsible = true) {
             addView(toggleRow(listOf("Show emotes" to PadSettings.SEC_NUMBERS)))
             addView(note("0% looks like the other buttons, 100% is the standard bold number look. The panel behind the numbers follows both sliders."))

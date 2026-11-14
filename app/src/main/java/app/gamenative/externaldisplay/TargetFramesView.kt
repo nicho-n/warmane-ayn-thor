@@ -124,6 +124,7 @@ class TargetFramesView(
                 })
             }
         }
+        if (mode == Mode.NEARBY) placeNearby()
         boxes.forEach { it.bind(LinkState.unit(it.slot)) }
         // A column longer than 5 shows 5 boxes, and more (smaller) ones only down to the last
         // occupied slot. Units keep their slot, so boxes above don't move, they just shrink.
@@ -133,6 +134,27 @@ class TargetFramesView(
             list.forEachIndexed { i, b ->
                 val v = if (i < show) VISIBLE else GONE
                 if (b.visibility != v) b.visibility = v
+            }
+        }
+    }
+
+    /**
+     * Nearby: 10 boxes, two columns of five. Enemies and NPCs (slots 40-49) fill from the top
+     * left going down, friendly players (60-69) from the bottom right going up; each unit keeps its box, since the
+     * addon keeps it in its slot. When both want a box, the one nearer its own start wins.
+     */
+    private fun placeNearby() {
+        columnBoxes.forEachIndexed { col, list ->
+            list.forEachIndexed { row, box ->
+                val npc = col * 5 + row
+                val player = (1 - col) * 5 + (4 - row)
+                val hasNpc = LinkState.unit(40 + npc) != null
+                val hasPlayer = LinkState.unit(60 + player) != null
+                box.slot = when {
+                    hasNpc && hasPlayer -> if (npc <= player) 40 + npc else 60 + player
+                    hasPlayer -> 60 + player
+                    else -> 40 + npc
+                }
             }
         }
     }
@@ -152,7 +174,14 @@ class TargetFramesView(
             xServer.injectPointerButtonPress(com.winlator.xserver.Pointer.Button.BUTTON_LEFT)
             postDelayed({
                 xServer.injectPointerButtonRelease(com.winlator.xserver.Pointer.Button.BUTTON_LEFT)
-                PadBridge.trackpadTouch(false)
+                // WoW reads the cursor position once per frame: move it only after a few frames,
+                // or the release is seen at the new position and the click misses the plate.
+                if (PadSettings.bool(PadSettings.TARGET_CURSOR_CENTER)) {
+                    postDelayed({
+                        xServer.injectPointerMove(w / 2, h / 2)
+                        PadBridge.trackpadTouch(false)
+                    }, PLATE_HOVER_MS)
+                } else PadBridge.trackpadTouch(false)
             }, 40)
         }, PLATE_HOVER_MS)
     }
@@ -168,6 +197,7 @@ class TargetFramesView(
             in 20..29 -> k("ASDFGHJZXC"[slot - 20]) to true
             in 40..49 -> k(digits[slot - 40]) to false
             in 50..59 -> k("QWERTYUIOP"[slot - 50]) to false
+            in 60..69 -> k("ASDFGHJZXC"[slot - 60]) to false
             else -> null
         }
     }
@@ -180,7 +210,7 @@ class TargetFramesView(
         else -> unit.name.takeIf { n -> n.isNotEmpty() && n.all { SlashTyper.canType(it) } }?.let { "/target $it" }
     }
 
-    private inner class UnitBox(val slot: Int) : View(context) {
+    private inner class UnitBox(var slot: Int) : View(context) {
         private var unit: LinkUnit? = null
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
         private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -210,12 +240,16 @@ class TargetFramesView(
                 canvas.drawRoundRect(rect, r, r, fill)
                 return
             }
-            // Bar colour: players red (enemy) or green (friendly); NPCs by reaction.
+            // Bar colour: players in their class colour (red/green by reaction when it isn't
+            // known); NPCs in their nameplate's colour (NotPlater's threat colours), sent as
+            // 128 + 2 bits each of red, green, blue; else by reaction.
             val isPlayer = u.flags and 64 != 0
+            val enemy = u.flags and 8 != 0
             val cls = when {
-                isPlayer && u.classId > 0 -> CLASS_COLORS.getOrElse(u.classId) { Color.GRAY }
-                u.flags and 8 != 0 -> HOSTILE
-                isPlayer -> FRIENDLY
+                isPlayer && u.classId in 1..10 -> CLASS_COLORS[u.classId]
+                isPlayer -> if (enemy) HOSTILE else FRIENDLY
+                u.classId >= 128 -> (u.classId - 128).let { c -> Color.rgb((c shr 4 and 3) * 85, (c shr 2 and 3) * 85, (c and 3) * 85) }
+                enemy -> HOSTILE
                 u.flags and 16 != 0 -> NEUTRAL
                 u.flags and 32 != 0 -> FRIENDLY
                 else -> Color.GRAY
@@ -227,10 +261,15 @@ class TargetFramesView(
             canvas.clipRect(0f, 0f, width * frac, height.toFloat())
             canvas.drawRoundRect(rect, r, r, fill)
             canvas.restore()
-            // Border: gold for your target.
+            // Border: gold for your target; players red (enemy) or green (friendly).
             fill.style = Paint.Style.STROKE
-            fill.strokeWidth = dp(if (u.isTarget) 3 else 1).toFloat()
-            fill.color = if (u.isTarget) Color.rgb(255, 209, 0) else Color.argb(90, 255, 255, 255)
+            val playerEdge = isPlayer && u.flags and (8 or 32) != 0
+            fill.strokeWidth = dp(if (u.isTarget || playerEdge) 3 else 1).toFloat()
+            fill.color = when {
+                u.isTarget -> Color.rgb(255, 209, 0)
+                playerEdge -> if (enemy) Color.rgb(230, 30, 30) else Color.rgb(40, 220, 40)
+                else -> Color.argb(90, 255, 255, 255)
+            }
             canvas.drawRoundRect(rect, r, r, fill)
             // Health right, name left in the space that's left: shrinks to fit, then "…".
             val hpText = when { u.dead -> "Dead"; u.hpKnown -> "${u.hp}%"; else -> "" }

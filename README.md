@@ -23,6 +23,10 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 ## Features
 
 - **Touch targeting:** a page on the bottom screen lists nearby units; tap one to target it.
+  Enemies and NPCs fill it from the top left, friendly players from the bottom right.
+  Players show in their class colour (red border for enemies, green for friends); NPCs
+  show their nameplate colour, so NotPlater's threat colours carry over. Settings →
+  Targeting chooses whether friendly NPCs and players are listed.
 - **Touch screen controls:** button pages, a keyboard and a trackpad on the bottom screen,
   with the game on the top screen.
 - **Opinionated console controls:** a fixed ConsolePort controller layout, plus **A** to
@@ -35,6 +39,9 @@ overlay on the game screen, and Box64 0.4.5, which Warmane accepts.
 
 Characters that don't have ConsolePort bindings yet start with this layout. Change it in
 ConsolePort's binding menu; `/thor defaults` puts it back on the current character.
+
+Buttons are named by the letters printed on the Thor (X top, A right, B bottom, Y left),
+with the Thor's controller mode set to **Standard** (its default).
 
 ABXY and the D-pad are action bar buttons; holding L2, R2 or both switches to another
 set of action bar buttons. Other buttons:
@@ -53,9 +60,8 @@ set of action bar buttons. Other buttons:
 | Start + L2 + R2 | Open chat |
 | D-pad up + L2 | Camera zoom in |
 | D-pad down + L2 | Camera zoom out |
-| D-pad right | Run/walk |
-| B + L2 + R2 | Open all bags |
-| A + L2 + R2 | Utility ring |
+| A + L2 + R2 | Open all bags |
+| B + L2 + R2 | Utility ring |
 | Left stick | Move |
 | Right stick | Camera; R3 switches it to moving the pointer, L3 clicks |
 
@@ -83,7 +89,7 @@ The app installs these. Only their own folders are replaced; other addons are le
 
 | Addon | Installed | What it does |
 |---|---|---|
-| `ThorControls` | Always | Sets up ConsolePort for the controller layout and the right-stick camera; Thor layout fixes (`/thor`). |
+| `ThorControls` | Always | Sets up ConsolePort for the controller layout and the right-stick camera; Thor layout fixes (`/thor`). Stops the frame stalls on each cast (ConsolePort's action buttons each ran a native cooldown sweep every global cooldown) and keeps the cooldown numbers exact. |
 | `WoWMobileLink` | Always | Sends unit info to the touch targeting page. |
 | ConsolePortLK | Always | Controller UI. Replaces any other ConsolePort. |
 | NotPlater | If missing | Nameplates. Required for touch targeting. |

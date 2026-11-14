@@ -876,15 +876,35 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private app.gamenative.externaldisplay.WowMobileLinkReader linkReader;
     private app.gamenative.externaldisplay.AutoLogin autoLogin;
     private app.gamenative.externaldisplay.GlueScreenWatcher glueScreens;
+    private long linkChordAt = 0;
+    private com.winlator.xserver.XKeycode linkOpenKeySent = null;
+    /**
+     * The WoWMobileLink addon's open key, which also tells it what Nearby includes besides
+     * enemies (see OPEN_KEYS in WoWMobileLink.lua): K friendly players only, M neither,
+     * N both, B friendly NPCs only.
+     */
+    private com.winlator.xserver.XKeycode linkOpenKey() {
+        boolean npcs = app.gamenative.externaldisplay.PadSettings.INSTANCE.bool(app.gamenative.externaldisplay.PadSettings.NEARBY_FRIENDLY_NPC);
+        boolean players = app.gamenative.externaldisplay.PadSettings.INSTANCE.bool(app.gamenative.externaldisplay.PadSettings.NEARBY_FRIENDLY_PLAYER);
+        if (npcs) return players ? com.winlator.xserver.XKeycode.KEY_N : com.winlator.xserver.XKeycode.KEY_B;
+        return players ? com.winlator.xserver.XKeycode.KEY_K : com.winlator.xserver.XKeycode.KEY_M;
+    }
     private final Runnable linkKeepAlive = new Runnable() {
         @Override
         public void run() {
             // Only when the data row isn't coming through (page just opened, or the UI was
-            // reloaded): every chord makes ConsolePort redraw all its buttons for each modifier
-            // change, which showed as a hitch every few seconds in combat.
-            long since = System.currentTimeMillis() - app.gamenative.externaldisplay.LinkState.INSTANCE.getLastPacketAt();
-            if (since > 3000) sendLinkChord(com.winlator.xserver.XKeycode.KEY_K);
-            signalHandler.postDelayed(this, 5000);
+            // reloaded), at most every 5 s, or when the Targeting settings changed: every chord
+            // makes ConsolePort redraw all its buttons for each modifier change, which showed as
+            // a hitch every few seconds in combat.
+            long now = System.currentTimeMillis();
+            long since = now - app.gamenative.externaldisplay.LinkState.INSTANCE.getLastPacketAt();
+            com.winlator.xserver.XKeycode key = linkOpenKey();
+            if (key != linkOpenKeySent || (since > 3000 && now - linkChordAt >= 5000)) {
+                sendLinkChord(key);
+                linkOpenKeySent = key;
+                linkChordAt = now;
+            }
+            signalHandler.postDelayed(this, 1000);
         }
     };
 
@@ -895,6 +915,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             linkReader.start();
         }
         else {
+            linkOpenKeySent = null;
             sendLinkChord(com.winlator.xserver.XKeycode.KEY_L);
             linkReader.stop();
         }

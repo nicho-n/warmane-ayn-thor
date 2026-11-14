@@ -73,6 +73,11 @@ object PadSettings {
     const val EXTRA_HEIGHT = "extra_height"
     /** 0 = tab bar at the top, 1 = at the bottom. */
     const val TAB_POS = "tab_pos"
+    /** Target page: whether Nearby also lists friendly NPCs (off) and friendly players (on). */
+    const val NEARBY_FRIENDLY_NPC = "nearby_friendly_npc"
+    const val NEARBY_FRIENDLY_PLAYER = "nearby_friendly_player"
+    /** After a Target page tap clicks a nameplate, put the cursor back in the middle of the screen. */
+    const val TARGET_CURSOR_CENTER = "target_cursor_center"
     const val MUTED = "muted_borders"
     const val LABEL_SCALE = "label_scale"
     const val HAPTICS = "haptics"
@@ -136,6 +141,9 @@ object PadSettings {
         MOD_CTRL to true,
         MOD_ALT to true,
         SEC_NUMBERS to true,
+        NEARBY_FRIENDLY_NPC to false,
+        NEARBY_FRIENDLY_PLAYER to true,
+        TARGET_CURSOR_CENTER to true,
         SWAP_SIDES to false,
         SWAP_TABS to false,
         PAGE_WIDTH to 100,

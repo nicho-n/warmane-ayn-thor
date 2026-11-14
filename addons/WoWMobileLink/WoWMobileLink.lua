@@ -2,7 +2,8 @@
 -- carrying unit info (name, class, health) for the WoW Mobile app's Target page.
 -- The app renders the game a few pixels taller than the display, so the row is
 -- never visible. It is only drawn while the app's Target page is open: the app
--- presses Ctrl+Alt+Shift+K (open) and Ctrl+Alt+Shift+L (closed).
+-- presses Ctrl+Alt+Shift+L (closed) and, to open, Ctrl+Alt+Shift+ K, M, N or B, which
+-- also say what the Nearby list includes (see OPEN_KEYS).
 --
 -- Wire format (read by the app, see WowMobileLinkReader.kt):
 --   CELLS cells across the full screen width, in a band BAND (fraction of the
@@ -17,8 +18,9 @@
 --     CRC-16/CCITT (init 0xFFFF, poly 0x1021) over everything before it, high byte first.
 --   mode: 0 world, 1 dungeon, 2 raid, 3 battleground, 4 arena
 --   slots: 0 player, 1-4 party1-4, 10-19 battleground team, 20-29 battleground
---          enemies, 30-34 arena1-5, 40-49 nearby units (from on-screen nameplates),
---          50-59 nearby friendly units (40-49 are then the enemies)
+--          enemies, 30-34 arena1-5, 40-49 nearby units (from on-screen nameplates: hostile
+--          and neutral NPCs and enemy players, plus friendly NPCs when the app asks for
+--          them), 50-59 nearby friendly NPCs, 60-69 nearby friendly players (when asked for)
 --   class: 1 warrior 2 paladin 3 hunter 4 rogue 5 priest 6 death knight 7 shaman
 --          8 mage 9 warlock 10 druid (0 unknown)
 --   hp: 0-100 percent, 255 unknown.  flags: 1 dead, 2 not visible/offline, 4 your target,
@@ -241,6 +243,44 @@ end
 -- slot stays theirs for HOLD seconds. lastRecord: what each slot last showed.
 local HOLD = NUM_HOLD
 
+-- Player classes by name, for plates that don't show it (friendly players' plates are
+-- plain blue). Learned from party/raid, target, mouseover and the combat log.
+local classByName = {}
+local function learnUnit(unit)
+    if UnitExists(unit) and UnitIsPlayer(unit) then
+        local name = UnitName(unit)
+        local _, token = UnitClass(unit)
+        if name and token and CLASS[token] then classByName[name] = CLASS[token] end
+    end
+end
+local learner = CreateFrame("Frame")
+learner:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+learner:RegisterEvent("PLAYER_TARGET_CHANGED")
+learner:RegisterEvent("PARTY_MEMBERS_CHANGED")
+learner:RegisterEvent("RAID_ROSTER_UPDATE")
+learner:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+local function learnGuid(guid, name)
+    if not guid or not name or classByName[name] then return end
+    -- Player GUIDs start with 0x0 on 3.3.5 (NPCs 0xF13..., pets 0xF14...).
+    if guid:sub(1, 3) ~= "0x0" then return end
+    local _, token = GetPlayerInfoByGUID(guid)
+    if token and CLASS[token] then classByName[strsplit("-", name)] = CLASS[token] end
+end
+learner:SetScript("OnEvent", function(_, event, ...)
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        local _, _, srcGuid, srcName, _, dstGuid, dstName = ...
+        learnGuid(srcGuid, srcName)
+        learnGuid(dstGuid, dstName)
+    elseif event == "UPDATE_MOUSEOVER_UNIT" then
+        learnUnit("mouseover")
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        learnUnit("target")
+    else
+        for i = 1, 4 do learnUnit("party" .. i) end
+        for i = 1, GetNumRaidMembers() do learnUnit("raid" .. i) end
+    end
+end)
+
 local function platesShown()
     scanPlates()
     local found = {}
@@ -253,6 +293,17 @@ local function platesShown()
                 local lo, hi = bar:GetMinMaxValues()
                 local hp = hi and hi > lo and math.floor((bar:GetValue() - lo) / (hi - lo) * 100 + 0.5) or 255
                 local cls, flags = plateColour(bar:GetStatusBarColor())
+                if cls == 0 and bit.band(flags, 64) ~= 0 then cls = classByName[name] or 0 end
+                -- NPCs: send the colour NotPlater draws (it recolours its own bar for threat):
+                -- 128 + 2 bits each of red, green, blue.
+                local shown = bar.healthBar
+                if cls == 0 and bit.band(flags, 64) == 0 and shown and shown.GetStatusBarColor then
+                    local r, g, b = shown:GetStatusBarColor()
+                    if r then
+                        local q = function(v) return math.max(0, math.min(3, math.floor(v * 3 + 0.5))) end
+                        cls = 128 + q(r) * 16 + q(g) * 4 + q(b)
+                    end
+                end
                 if targetName == name and f:GetAlpha() > 0.95 then flags = flags + 4 end
                 local cx, cy = bar:GetCenter()
                 local scale = bar:GetEffectiveScale() / UIParent:GetEffectiveScale()
@@ -321,9 +372,11 @@ local function platesShown()
         r.n = keep[r.frame].n
     end
     plateNum = keep
-    -- Every unit shows its number, starting at (1).
+    -- Hostile and neutral NPCs show their number, starting at (1); players and friendly
+    -- NPCs don't (their names are unique, or nearly).
     for _, r in ipairs(found) do
-        r.num = math.min(r.n, 255)
+        local plain = bit.band(r.flags, 32) ~= 0 or bit.band(r.flags, 64) ~= 0
+        r.num = plain and 0 or math.min(r.n, 255)
         showNumber(r.frame, r.nameRegion, r.num)
     end
     return found, targetName
@@ -403,18 +456,31 @@ local function slotGroup(g, found, targetName, targetShown)
 end
 
 local function newGroup() return { plateSlot = {}, held = {}, lastRecord = {} } end
-local nearbyGroup, friendlyGroup = newGroup(), newGroup()
+local npcGroup, friendlyGroup, playerGroup = newGroup(), newGroup(), newGroup()
 
--- Nearby (slots 40-49): enemies (hostile and neutral). Friendly (slots 50-59): friendly NPCs and players.
+-- What the app's Nearby list includes besides enemies (set by the open key, see OPEN_KEYS).
+local showFriendlyNPCs, showFriendlyPlayers = false, true
+
+-- Nearby (slots 40-49): hostile and neutral NPCs and enemy players, plus friendly NPCs if
+-- asked for. Friendly NPCs (slots 50-59, the app's NPC tab). Friendly players (slots 60-69),
+-- if asked for.
 local function nearby()
     local found, targetName = platesShown()
-    local others, friendly, targetShown = {}, {}, false
+    local npcs, friendly, players, targetShown = {}, {}, {}, false
     for _, r in ipairs(found) do
         if bit.band(r.flags, 4) ~= 0 then targetShown = true end
-        local list = bit.band(r.flags, 32) ~= 0 and friendly or others
-        list[#list + 1] = r
+        local isFriend, isPlayer = bit.band(r.flags, 32) ~= 0, bit.band(r.flags, 64) ~= 0
+        if isFriend and isPlayer then
+            if showFriendlyPlayers then players[#players + 1] = r end
+        elseif isFriend then
+            friendly[#friendly + 1] = r
+            if showFriendlyNPCs then npcs[#npcs + 1] = r end
+        else
+            npcs[#npcs + 1] = r
+        end
     end
-    return slotGroup(nearbyGroup, others, targetName, targetShown), slotGroup(friendlyGroup, friendly, targetName, targetShown)
+    return slotGroup(npcGroup, npcs, targetName, targetShown), slotGroup(friendlyGroup, friendly, targetName, targetShown),
+        slotGroup(playerGroup, players, targetName, targetShown)
 end
 
 ---------------------------------------------------------------------------
@@ -432,6 +498,7 @@ do
         KEYS[20 + i] = "ALT-CTRL-SHIFT-" .. enemy[i + 1]
         KEYS[40 + i] = "ALT-CTRL-" .. digits[i + 1]
         KEYS[50 + i] = "ALT-CTRL-" .. team[i + 1]
+        KEYS[60 + i] = "ALT-CTRL-" .. enemy[i + 1]
     end
 end
 local UNIT_SLOTS = { [0] = "player", "party1", "party2", "party3", "party4" }
@@ -563,9 +630,10 @@ local function collect()
             end
         end
     end
-    local others, friendly = nearby()
-    assign(list, 40, others)
+    local npcs, friendly, players = nearby()
+    assign(list, 40, npcs)
     assign(list, 50, friendly)
+    assign(list, 60, players)
     if not next(buttons) then
         for _, r in ipairs(list) do
             if UNIT_SLOTS[r.slot] and r.flags < 128 then r.flags = r.flags + 128 end
@@ -655,12 +723,42 @@ numberer:SetScript("OnUpdate", function(_, elapsed)
     platesShown()
 end)
 
+-- Open keys: each turns the strip on and says what Nearby includes besides enemies
+-- (friendly NPCs, friendly players). The app sends one when the page opens and when the
+-- Targeting settings change; a single key, so ConsolePort redraws its buttons only once.
+local OPEN_KEYS = { K = { false, true }, M = { false, false }, N = { true, true }, B = { true, false } }
+local openButtons = {}
+for key, opt in pairs(OPEN_KEYS) do
+    local b = CreateFrame("Button", "WoWMobileLinkOpen" .. key)
+    b:SetScript("OnClick", function()
+        if showFriendlyNPCs ~= opt[1] or showFriendlyPlayers ~= opt[2] then
+            showFriendlyNPCs, showFriendlyPlayers = opt[1], opt[2]
+            -- Units change lists: start the groups afresh.
+            npcGroup, playerGroup = newGroup(), newGroup()
+        end
+        WoWMobileLink_SetActive(true)
+    end)
+    openButtons[key] = b
+end
+
+-- Nameplates are what Nearby is built from: friendly and enemy plates on, and enemy
+-- players' plates in class colours (the only way to tell them from NPCs). Done once per
+-- account, so they stay off if switched off later.
+local function defaultNameplates()
+    WoWMobileLinkDB = WoWMobileLinkDB or {}
+    if WoWMobileLinkDB.platesDefaulted then return end
+    WoWMobileLinkDB.platesDefaulted = true
+    SetCVar("nameplateShowEnemies", "1")
+    SetCVar("nameplateShowFriends", "1")
+    pcall(SetCVar, "ShowClassColorInNameplate", "1") -- not on every client build
+end
+
 local owner = CreateFrame("Frame")
 local function bindKeys()
     if InCombatLockdown() then owner.pending = true; return end
     owner.pending = nil
     if not next(buttons) then makeButtons() end
-    SetOverrideBinding(owner, true, "ALT-CTRL-SHIFT-K", "WOWMOBILELINK_ON")
+    for key, b in pairs(openButtons) do SetOverrideBindingClick(owner, true, "ALT-CTRL-SHIFT-" .. key, b:GetName()) end
     SetOverrideBinding(owner, true, "ALT-CTRL-SHIFT-L", "WOWMOBILELINK_OFF")
 end
 owner:RegisterEvent("PLAYER_LOGIN")
@@ -669,6 +767,7 @@ owner:RegisterEvent("UI_SCALE_CHANGED")
 owner:RegisterEvent("DISPLAY_SIZE_CHANGED")
 owner:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
+        defaultNameplates()
         bindKeys()
     elseif event == "PLAYER_REGEN_ENABLED" then
         if owner.pending then bindKeys() end

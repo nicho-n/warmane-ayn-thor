@@ -35,6 +35,10 @@ local CP_SETTINGS = {
     skipGuideBtn = true, skipCalibration = true,
     skipCP_T3 = true, skipCP_T4 = true, skipCP_T5 = true, skipCP_T6 = true,
     disableStickMouse = true,
+    -- The Thor's face buttons are labelled like a Switch controller (top X, right A,
+    -- bottom B, left Y). Only changes ConsolePort's button pictures; bindings stay
+    -- on button positions.
+    type = "SWITCH",
 }
 local MODIFIERS = { "", "SHIFT-", "CTRL-", "CTRL-SHIFT-" }
 
@@ -50,7 +54,7 @@ local DEFAULT_BINDINGS = {
     CP_L_UP    = { [""] = "MULTIACTIONBAR1BUTTON12", ["SHIFT-"] = "CAMERAZOOMIN", ["CTRL-"] = "MULTIACTIONBAR2BUTTON6", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON10" },
     CP_L_DOWN  = { [""] = "ACTIONBUTTON11", ["SHIFT-"] = "CAMERAZOOMOUT", ["CTRL-"] = "MULTIACTIONBAR2BUTTON8", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON12" },
     CP_L_LEFT  = { [""] = "MULTIACTIONBAR1BUTTON11", ["SHIFT-"] = "MULTIACTIONBAR2BUTTON1", ["CTRL-"] = "MULTIACTIONBAR2BUTTON5", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON9" },
-    CP_L_RIGHT = { [""] = "TOGGLERUN", ["SHIFT-"] = "MULTIACTIONBAR2BUTTON3", ["CTRL-"] = "MULTIACTIONBAR2BUTTON7", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON11" },
+    CP_L_RIGHT = { [""] = "ACTIONBUTTON12", ["SHIFT-"] = "MULTIACTIONBAR2BUTTON3", ["CTRL-"] = "MULTIACTIONBAR2BUTTON7", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON11" },
     CP_X_LEFT  = { [""] = "TARGETNEARESTFRIEND", ["SHIFT-"] = "TOGGLEWORLDMAP", ["CTRL-"] = "CP_CAMZOOMOUT", ["CTRL-SHIFT-"] = "CP_CAMZOOMIN" },        -- Select
     CP_X_RIGHT = { [""] = "INTERACTMOUSEOVER", ["SHIFT-"] = "TOGGLEGAMEMENU", ["CTRL-"] = "CLICK ConsolePortRaidCursorToggle:LeftButton", ["CTRL-SHIFT-"] = "OPENCHAT" }, -- Start
     CP_T_L3    = {},
@@ -85,6 +89,22 @@ local function applyDefaultBindings(force)
     return false
 end
 
+-- Once per character: D-pad right used to be run/walk; it's now action bar slot 12,
+-- and run/walk isn't bound to any controller button.
+local function migrateRunWalk()
+    local set = type(ConsolePortBindingSet) == "table" and ConsolePortBindingSet[classSetId()]
+    if type(set) ~= "table" then return end
+    for button, mods in pairs(set) do
+        if type(mods) == "table" then
+            for mod, action in pairs(mods) do
+                if action == "TOGGLERUN" then
+                    mods[mod] = (button == "CP_L_RIGHT" and mod == "") and "ACTIONBUTTON12" or nil
+                end
+            end
+        end
+    end
+end
+
 local defaults = { petbar = true, xpLift = 10, hideTriggers = true, hideTrail = true, defaultCastBar = true, hideGcd = true }
 local db
 local pending = {}
@@ -93,6 +113,17 @@ local owner = CreateFrame("Frame", "ThorControlsBindingOwner", UIParent)
 
 local function msg(text)
     DEFAULT_CHAT_FRAME:AddMessage("|cff69ccf0Thor Controls:|r " .. text)
+end
+
+-- Measurement output also goes into ThorControlsDB.log, which WoW writes to
+-- WTF/Account/<account>/SavedVariables/ThorControls.lua on /reload or logout.
+local LOG_MAX = 400
+local function report(text)
+    msg(text)
+    if not db then return end
+    db.log = db.log or {}
+    db.log[#db.log + 1] = date("%H:%M:%S ") .. text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    while #db.log > LOG_MAX do table.remove(db.log, 1) end
 end
 
 local function onoff(value) return value and "|cff00ff00on|r" or "|cffff4040off|r" end
@@ -245,6 +276,8 @@ local GCD_MAX = 1.5
 
 hooksecurefunc("CooldownFrame_SetTimer", function(self, start, duration, enable)
     if db and db.hideGcd and enable and enable ~= 0 and duration and duration > 0 and duration <= GCD_MAX then
+        -- Keep a real cooldown that is still running (section 13 tracks it).
+        if self.thorEnd and self.thorEnd > GetTime() then return end
         self:Hide()
     end
 end)
@@ -293,12 +326,164 @@ local function hideBlizzardBars()
 end
 
 ---------------------------------------------------------------------------
+-- 12. Utility ring 3D model: ConsolePort 1.5.0 creates a transparent PlayerModel
+-- (ConsolePortUtilityAnimation.Spell) that is shown from load until the ring is
+-- first opened, and nothing ever puts a model in it. Keep it hidden: a shown
+-- model frame makes the engine do work every frame that no addon profiler sees.
+---------------------------------------------------------------------------
+local setSpikes -- section 10
+
+---------------------------------------------------------------------------
+-- 13. Cooldown sweeps on ConsolePort bar buttons. Each button has a native
+-- Cooldown frame that ConsolePort 1.5.0 keeps invisible on round buttons (it draws
+-- its own sweep from a SetCooldown hook). Starting the native one on every button
+-- still costs the engine about half a second per cast under emulation, so on
+-- round buttons only ConsolePort's own sweep is started. Square buttons, where
+-- the native sweep is the visible one, keep it. Global cooldowns (hidden by
+-- section 9 anyway) start neither.
+---------------------------------------------------------------------------
+-- ConsolePort 1.5.0's cooldown text (CPCC) is keyed by frame name, but the round
+-- sweep passes the frame itself: OnUpdate then errors on every frame while a
+-- cooldown runs (Wrapper.lua:618), which drags the framerate down. Accept both.
+local function fixCooldownText(cpcc)
+    if not cpcc or cpcc.thorFixed then return end
+    cpcc.thorFixed = true
+    local function key(target)
+        if type(target) == "table" and target.GetName then return target:GetName() end
+        return target
+    end
+    local onUpdate, start, stop = cpcc.OnUpdate, cpcc.StartCooldown, cpcc.StopCooldown
+    -- Exact time instead of ConsolePort's rounded "2m": m:ss from a minute up,
+    -- whole seconds (rounded up, like the game) below, tenths under 10 s.
+    local function exact(remaining)
+        if remaining >= 60 then
+            local s = math.ceil(remaining)
+            return string.format("%d:%02d", math.floor(s / 60), s % 60)
+        elseif remaining >= 10 then
+            return string.format("%d", math.ceil(remaining))
+        end
+        return string.format("%.1f", remaining)
+    end
+    cpcc.OnUpdate = function(self, target, elapsed)
+        target = key(target)
+        local holder, meta = target and self.texts[target], target and self.meta[target]
+        if not holder or not meta then return end
+        onUpdate(self, target, elapsed or 0)
+        if meta.visible and holder.fontstring then
+            local remaining = meta.start + meta.duration - GetTime()
+            if remaining > 0 then holder.fontstring:SetText(exact(remaining)) end
+        end
+    end
+    cpcc.StartCooldown = function(self, target, ...)
+        return start(self, key(target), ...)
+    end
+    cpcc.StopCooldown = function(self, target, ...)
+        local k = key(target)
+        return stop(self, k, ...)
+    end
+    -- The text was only updated from the sweep animations, so it could freeze
+    -- (e.g. "9.1" left after the cooldown ended). Update every text 10 times a
+    -- second here, and clear it when its cooldown is over.
+    local ticker, wait = CreateFrame("Frame"), 0
+    ticker:SetScript("OnUpdate", function(_, elapsed)
+        wait = wait - elapsed
+        if wait > 0 then return end
+        wait = 0.1
+        local now = GetTime()
+        for name, meta in pairs(cpcc.meta) do
+            local holder = cpcc.texts[name]
+            if meta.visible then
+                if now >= meta.start + meta.duration then
+                    stop(cpcc, name)
+                    if holder then holder:Hide() end
+                else
+                    if holder and not holder:IsShown() then holder:Show() end
+                    cpcc:OnUpdate(name, 0.1)
+                end
+            elseif holder and holder:IsShown() then
+                holder:Hide()
+            end
+        end
+    end)
+end
+
+local function fixBarCooldowns()
+    local cpapi = ConsolePort and ConsolePort.GetData and ConsolePort:GetData().CPAPI
+    local hook = cpapi and cpapi.RoundCooldown_OnSetCooldown
+    if not hook then return end
+    fixCooldownText(cpapi.CPCC)
+    local f = EnumerateFrames()
+    while f do
+        local name = f:GetName()
+        local cd = name and name:match("^CPB_") and f.cooldown
+        if cd and not cd.thorLight and cd:GetObjectType() == "Cooldown" then
+            cd.thorLight = true
+            -- The round sweep is drawn inside a ScrollFrame, which is only redrawn when
+            -- its scroll child changes size/position. The native cooldown used to force
+            -- that every frame; now refresh it whenever the sweep moves.
+            local spinner = f.roundcd and f.roundcd.spinner
+            local sf = spinner and spinner._scrollframe
+            if spinner and sf and spinner.SetValue and not spinner.thorRefresh then
+                spinner.thorRefresh = true
+                local setValue = spinner.SetValue
+                spinner.SetValue = function(self, value)
+                    local last = self._lastValue
+                    setValue(self, value)
+                    if self._lastValue ~= last then sf:UpdateScrollChildRect() end
+                end
+            end
+            -- Without a native cooldown running, the Cooldown frame hides itself at
+            -- once, and ConsolePort's OnHide then clears its own sweep and timer. Only
+            -- let that through when the button's spell really is off cooldown.
+            local onHide = cd:GetScript("OnHide")
+            cd:SetScript("OnHide", function(self, ...)
+                local now = GetTime()
+                local button = self:GetParent()
+                if button and button.GetCooldown then
+                    local s, d = button:GetCooldown()
+                    if s and d and d > GCD_MAX and s + d > now + 0.05 then return end
+                end
+                if onHide then return onHide(self, ...) end
+            end)
+            local native = getmetatable(cd).__index.SetCooldown
+            cd.SetCooldown = function(self, start, duration, ...)
+                -- Global cooldown: no sweep work (section 9 hides it, unless a real
+                -- cooldown is still running on this button).
+                if db and db.hideGcd and duration and duration > 0 and duration <= GCD_MAX then return end
+                -- Same cooldown again (events repeat it): leave the running sweep alone.
+                if self.thorStart == start and self.thorEnd and self.thorEnd > GetTime() then return end
+                self.thorStart, self.thorEnd = start, (start or 0) + (duration or 0)
+                local button = self:GetParent()
+                if button and button.isSquareMode then native(self, start, duration, ...) end
+                hook(self, start, duration)
+            end
+        end
+        f = EnumerateFrames(f)
+    end
+end
+
+local function noop() end
+local function hideUtilityModel()
+    local anim = _G.ConsolePortUtilityAnimation
+    if anim and not anim:IsProtected() then
+        anim:Hide()
+        local model = anim.Spell
+        if model and model.ClearModel then
+            model:ClearModel()
+            model:Hide()
+            model.Show = noop
+        end
+    end
+end
+
+---------------------------------------------------------------------------
 -- Events
 ---------------------------------------------------------------------------
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("UNIT_PET")
 events:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
@@ -308,6 +493,12 @@ events:SetScript("OnEvent", function(_, event, arg1)
             for k, v in pairs(defaults) do if db[k] == nil then db[k] = v end end
             applyCalibration()
             applyDefaultBindings()
+            db.runWalkMoved = db.runWalkMoved or {}
+            local who = (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
+            if not db.runWalkMoved[who] then
+                migrateRunWalk()
+                db.runWalkMoved[who] = true
+            end
             -- ConsolePortBar loaded first (OptionalDeps), so its own ADDON_LOADED has passed;
             -- its settings are read when the bar is set up at login, so set them now.
             applyTriggers()
@@ -323,9 +514,15 @@ events:SetScript("OnEvent", function(_, event, arg1)
         hideBlizzardBars()
         applyPetBar()
         applyTrail()
+        hideUtilityModel()
+        if db.spikes then setSpikes(true) end
+        fixBarCooldowns()
     elseif event == "PLAYER_ENTERING_WORLD" then
         applyPetBar()
         applyTrail()
+        fixBarCooldowns()
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        fixBarCooldowns() -- buttons added by layout changes since login
     elseif event == "UNIT_PET" then
         if arg1 == "player" then applyPetBar() end
     elseif event == "PLAYER_REGEN_ENABLED" then
@@ -341,6 +538,19 @@ end)
 -- SPIKE_MS, with the events handled during it and, when /thor profile is on,
 -- which addons ran how long in it. Diagnosis only; off by default, not saved.
 ---------------------------------------------------------------------------
+-- Grouped by family: digits in names become #, so the 12 buttons of one bar add up;
+-- an unnamed frame counts under its nearest named parent.
+local function family(fr)
+    local name, p, depth = fr:GetName(), fr, 0
+    while not name and p and depth < 6 do
+        p = p:GetParent()
+        name = p and p:GetName()
+        depth = depth + 1
+    end
+    name = name and name:gsub("%d+", "#") or "(unnamed)"
+    return fr:GetName() and name or (name .. " > " .. fr:GetObjectType())
+end
+
 local SPIKE_MS = 150
 local spikes = CreateFrame("Frame")
 local spikeEvents, spikeCpu, spikeScript = {}, {}, 0
@@ -354,8 +564,16 @@ local function snapshotCpu()
     spikeScript = GetScriptCPUUsage()
 end
 
-spikes:SetScript("OnEvent", function(_, event)
+-- When each event arrived in the frame (ms after the previous frame's update), and
+-- the text of executed chat/macro lines, to see where in a slow frame the time goes.
+local spikeTimeline, frameStart, lastMem = {}, 0, 0
+spikes:SetScript("OnEvent", function(_, event, arg1)
     spikeEvents[event] = (spikeEvents[event] or 0) + 1
+    if #spikeTimeline < 60 then
+        local label = event
+        if event == "EXECUTE_CHAT_LINE" and arg1 then label = event .. "(" .. tostring(arg1):sub(1, 40) .. ")" end
+        spikeTimeline[#spikeTimeline + 1] = string.format("+%d %s", debugprofilestop() - frameStart, label)
+    end
 end)
 spikes:SetScript("OnUpdate", function(_, elapsed)
     local profiling = GetCVar("scriptProfile") == "1"
@@ -365,7 +583,11 @@ spikes:SetScript("OnUpdate", function(_, elapsed)
         for e, n in pairs(spikeEvents) do ev[#ev + 1] = n > 1 and (e .. "x" .. n) or e end
         table.sort(ev)
         local line = string.format("Slow frame %d ms. Events: %s", elapsed * 1000, #ev > 0 and table.concat(ev, ", ") or "none")
-        msg(line)
+        report(line)
+        local mem = collectgarbage("count")
+        report(string.format("  Lua memory: %.1f MB before, %.1f MB after (%+.1f MB)", lastMem / 1024, mem / 1024, (mem - lastMem) / 1024))
+        spikeTimeline[#spikeTimeline + 1] = string.format("+%d next frame", debugprofilestop() - frameStart)
+        report("  Timeline: " .. table.concat(spikeTimeline, ", "))
         if profiling then
             local before, beforeScript = {}, spikeScript
             for i, v in pairs(spikeCpu) do before[i] = v end
@@ -378,14 +600,32 @@ spikes:SetScript("OnUpdate", function(_, elapsed)
             table.sort(list, function(a, b) return a.ms > b.ms end)
             local parts = {}
             for k = 1, math.min(6, #list) do parts[k] = string.format("%s %d", list[k].name, list[k].ms) end
-            msg(string.format("  Addon code in it: %d ms of %d. %s", spikeScript - beforeScript, elapsed * 1000, table.concat(parts, ", ")))
+            report(string.format("  Addon code in it: %d ms of %d. %s", spikeScript - beforeScript, elapsed * 1000, table.concat(parts, ", ")))
         end
     elseif profiling then
         snapshotCpu()
     end
     wipe(spikeEvents)
+    wipe(spikeTimeline)
+    lastMem = collectgarbage("count")
+    frameStart = debugprofilestop()
 end)
 spikes:Hide()
+
+-- Stays on across reloads until /thor spikes off.
+setSpikes = function(on)
+    if on then
+        wipe(spikeEvents)
+        if GetCVar("scriptProfile") == "1" then snapshotCpu() end
+        spikes:RegisterAllEvents()
+        spikes:Show()
+        report("Reporting frames slower than " .. SPIKE_MS .. " ms. /thor spikes off to stop.")
+    else
+        spikes:UnregisterAllEvents()
+        spikes:Hide()
+        report("Spike reports off.")
+    end
+end
 
 ---------------------------------------------------------------------------
 -- /thor
@@ -414,7 +654,7 @@ SlashCmdList.THORCONTROLS = function(input)
         ReloadUI()
     elseif cmd == "cpu" then
         if GetCVar("scriptProfile") ~= "1" then
-            msg("Turn measuring on first: /thor profile on (reloads), play a bit, then /thor cpu.")
+            report("Turn measuring on first: /thor profile on (reloads), play a bit, then /thor cpu.")
             return
         end
         UpdateAddOnCPUUsage()
@@ -427,24 +667,49 @@ SlashCmdList.THORCONTROLS = function(input)
             end
         end
         table.sort(list, function(a, b) return a.ms > b.ms end)
-        msg(string.format("Addon CPU since the last reload (%.1f s total):", total / 1000))
+        report(string.format("Addon CPU since the last reload (%.1f s total):", total / 1000))
         for i = 1, math.min(10, #list) do
-            msg(string.format("%2d. %s  %.1f s (%d%%)", i, list[i].name, list[i].ms / 1000,
+            report(string.format("%2d. %s  %.1f s (%d%%)", i, list[i].name, list[i].ms / 1000,
                 total > 0 and math.floor(list[i].ms / total * 100 + 0.5) or 0))
         end
-        msg("/thor profile off when done.")
-    elseif cmd == "spikes" and (value == "on" or value == "off") then
-        if value == "on" then
-            wipe(spikeEvents)
-            if GetCVar("scriptProfile") == "1" then snapshotCpu() end
-            spikes:RegisterAllEvents()
-            spikes:Show()
-            msg("Reporting frames slower than " .. SPIKE_MS .. " ms. /thor spikes off to stop.")
-        else
-            spikes:UnregisterAllEvents()
-            spikes:Hide()
-            msg("Spike reports off.")
+        report("/thor profile off when done.")
+    elseif cmd == "frames" then
+        -- Which frames' scripts (OnEvent, OnUpdate, ...) used the most Lua time since the
+        -- reload, Blizzard's and secure ones included (the per-addon numbers miss those).
+        if GetCVar("scriptProfile") ~= "1" then
+            report("Turn measuring on first: /thor profile on (reloads), play a bit, then /thor frames.")
+            return
         end
+        local groups, total, frames = {}, 0, 0
+        local f = EnumerateFrames()
+        while f do
+            local ms = GetFrameCPUUsage(f, false)
+            if ms and ms > 0 then
+                total, frames = total + ms, frames + 1
+                local key = family(f)
+                local g = groups[key]
+                if not g then g = { name = key, ms = 0, n = 0 }; groups[key] = g end
+                g.ms, g.n = g.ms + ms, g.n + 1
+            end
+            f = EnumerateFrames(f)
+        end
+        local list = {}
+        for _, g in pairs(groups) do list[#list + 1] = g end
+        table.sort(list, function(a, b) return a.ms > b.ms end)
+        report(string.format("Frame script time since reload: %.1f s in %d frames (all Lua %.1f s):",
+            total / 1000, frames, GetScriptCPUUsage() / 1000))
+        for i = 1, math.min(20, #list) do
+            report(string.format("%2d. %s x%d  %.2f s", i, list[i].name, list[i].n, list[i].ms / 1000))
+        end
+    elseif cmd == "spikes" and (value == "on" or value == "off") then
+        db.spikes = value == "on"
+        setSpikes(db.spikes)
+    elseif cmd == "bar" and (value == "on" or value == "off") then
+        if value == "on" then EnableAddOn("ConsolePortBar") else DisableAddOn("ConsolePortBar") end
+        ReloadUI()
+    elseif cmd == "log" and value == "clear" then
+        if db then db.log = nil end
+        msg("Measurement log cleared.")
     elseif cmd == "castbar" and (value == "on" or value == "off") then
         if InCombatLockdown() then msg("Leave combat first."); return end
         db.defaultCastBar = value == "on"
@@ -470,6 +735,7 @@ SlashCmdList.THORCONTROLS = function(input)
         msg("/thor gcd on|off  - global cooldown sweep on the action buttons")
         msg("/thor profile on|off, /thor cpu  - measure which addons use the most CPU")
         msg("/thor spikes on|off  - report slow frames and what ran in them")
+        msg("/thor bar on|off  - turn ConsolePort's action bar on/off (reloads)")
         msg("/thor trail on|off  - controller icon next to the pointer")
         msg("/thor calibrate  - put the controller calibration back")
         msg("/thor defaults  - replace this character's controller bindings with the defaults (reloads)")
