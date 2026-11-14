@@ -120,4 +120,4 @@ addons keep their own licenses. Box64 source details:
 `app/src/main/assets/box64/BOX64-0.4.5-SOURCE.txt`.
 
 World of Warcraft is a trademark of Blizzard Entertainment. This project is not
-affiliated with Blizzard Entertainment, Warmane, WoW Imito or AYN.
+affiliated with Blizzard Entertainment, Warmane, or AYN.
