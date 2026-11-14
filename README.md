@@ -26,7 +26,7 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
   raid (Raid Heal mode), battleground or arena players; tap one to target it.
 - **Touch screen controls:** button pages, a keyboard and a trackpad on the bottom screen,
   with the game on the top screen.
-- **Opinionated console controls:** a fixed ConsolePort controller layout, plus **A** to
+- **Opinionated console controls:** a remappable ConsolePort controller layout, plus **A** to
   play, enter the world and log in, and the **D-pad** to pick a character.
 
 Also: an Update button next to Play when a new version is out (with what's new), optional
