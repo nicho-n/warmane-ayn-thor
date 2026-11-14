@@ -40,6 +40,18 @@ local CP_SETTINGS = {
     -- on button positions.
     type = "SWITCH",
 }
+-- The rest of the Thor layout, for an account whose ConsolePort settings were just created
+-- (see freshSetup): L2/R2 are the modifiers (Shift/Ctrl), L1/R1 plain buttons. The app
+-- writes the same settings before the first login when it knows the account name.
+local FRESH_SETTINGS = {
+    CP_M1 = "CP_TL2", CP_M2 = "CP_TR2", CP_T1 = "CP_TL1", CP_T2 = "CP_TR1",
+    actionBarStyle = 4, bindView = 1, autoLootDefault = true, autoSellJunk = true,
+    autoExtra = true, stickRadialType = 2, disableSmartMouse = true, disableKeyboard = true,
+    disableCvarReset = true, UIdropDownFix = true,
+}
+-- Set when ConsolePort made new settings on this login (and opened its setup screen):
+-- they're replaced with the Thor layout and the UI is reloaded once at login.
+local freshSetup
 local MODIFIERS = { "", "SHIFT-", "CTRL-", "CTRL-SHIFT-" }
 
 -- Default controller bindings for characters that have none yet (see README).
@@ -716,6 +728,12 @@ events:SetScript("OnEvent", function(_, event, arg1)
             -- 1.39: the global cooldown sweep is shown again (cheap since section 13);
             -- switch it back on once for those who had the old default.
             if not db.gcdShown then db.gcdShown = true; db.hideGcd = false end
+            -- ConsolePort found no settings (an account's first login, when the app didn't
+            -- know the account name): it made defaults with an empty calibration.
+            if type(ConsolePortSettings) == "table" and not next(ConsolePortSettings.calibration or {}) then
+                for k, v in pairs(FRESH_SETTINGS) do ConsolePortSettings[k] = v end
+                freshSetup = true
+            end
             -- XP bar settings from the app (AppSettings.lua, rewritten by the app each launch).
             local app = ThorControlsApp
             if type(app) == "table" then
@@ -739,6 +757,14 @@ events:SetScript("OnEvent", function(_, event, arg1)
             hookWatchBars()
         end
     elseif event == "PLAYER_LOGIN" then
+        if freshSetup then
+            freshSetup = nil
+            if ConsolePortSplashFrame then ConsolePortSplashFrame:Hide() end
+            -- The settings above (and the calibration) take effect on the reload.
+            msg("Setting up the controller for this account; reloading the UI.")
+            ReloadUI()
+            return
+        end
         if triggersRemoved and not InCombatLockdown() then
             triggersRemoved = nil
             hideTriggerButtons()
