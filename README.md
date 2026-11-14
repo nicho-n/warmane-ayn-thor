@@ -1,7 +1,7 @@
 # Warmane on AYN Thor
 
 **The best way to play [Warmane](https://www.warmane.com) (World of Warcraft 3.3.5a) on the AYN Thor.**
-The app installs as *Warmane*.
+The app installs as *Warmane Ayn Thor Launcher*.
 
 The game runs on the Thor's top screen; the bottom screen becomes a full control
 surface, with button pages, a keyboard, a trackpad and an **innovative touch-targeting
