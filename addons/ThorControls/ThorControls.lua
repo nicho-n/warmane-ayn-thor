@@ -415,6 +415,24 @@ local TRIGGER_LAYOUT = {
     CP_T4 = { point = { "RIGHT", -456, 56 }, dir = "left", size = 64 },
 }
 
+-- A new character's bar is built with ConsolePortBar's default layout, L2/R2 included,
+-- before this addon loads; set when they're taken out of it, so they're hidden at login
+-- (from the next login they're not built at all).
+local triggersRemoved
+
+local function hideTriggerButtons()
+    for id in pairs(TRIGGER_LAYOUT) do
+        local base = "CPB_" .. id:sub(4)
+        for _, suffix in ipairs({ "", "_SHIFT", "_CTRL", "_CTRL-SHIFT", "_SHADOW" }) do
+            local f = _G[base .. suffix]
+            if f then
+                f:SetAlpha(0)
+                f:Hide()
+            end
+        end
+    end
+end
+
 local function applyTriggers()
     local cfg = ConsolePortBarSetup
     if not db or not cfg or not cfg.layout then return false end
@@ -422,6 +440,7 @@ local function applyTriggers()
     cfg.defaultCastBar = db.defaultCastBar and true or nil
     for id, geometry in pairs(TRIGGER_LAYOUT) do
         if db.hideTriggers then
+            if cfg.layout[id] then triggersRemoved = true end
             cfg.layout[id] = nil
         elseif not cfg.layout[id] then
             cfg.layout[id] = copy(geometry)
@@ -720,6 +739,10 @@ events:SetScript("OnEvent", function(_, event, arg1)
             hookWatchBars()
         end
     elseif event == "PLAYER_LOGIN" then
+        if triggersRemoved and not InCombatLockdown() then
+            triggersRemoved = nil
+            hideTriggerButtons()
+        end
         applyCalibration()
         reloadConsolePortBindings()
         applyCamera()
