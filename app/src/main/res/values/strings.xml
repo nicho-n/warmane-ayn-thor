@@ -30,7 +30,7 @@
     <string name="wow_touch_controls">Show touch controls on the game screen</string>
     <string name="wow_auto_login">Auto-login</string>
     <string name="wow_auto_login_enable">Type my password on the login screen</string>
-    <string name="wow_password_hint">Password (leave empty to keep the saved one)</string>
+    <string name="wow_password_hint">Password</string>
     <string name="wow_password_saved_hint">Password saved. Type a new one to replace it</string>
     <string name="wow_auto_login_note">The account name is filled in on the login screen, and your controller settings are set up for it before the first login. With auto-login on, the app types the password and presses Enter once the login screen shows (once per launch). The password is stored encrypted on this device only; untick to delete it.</string>
     <string name="wow_auto_login_no_password">Enter a password for auto-login</string>

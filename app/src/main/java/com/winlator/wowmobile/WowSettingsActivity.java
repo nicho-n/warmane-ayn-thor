@@ -76,8 +76,14 @@ public class WowSettingsActivity extends AppCompatActivity {
         etAccountName.setText(LoginSecret.accountName(this));
         cbAutoLogin.setChecked(LoginSecret.isEnabled(this));
         if (LoginSecret.hasPassword(this)) etPassword.setHint(R.string.wow_password_saved_hint);
-        etPassword.setEnabled(cbAutoLogin.isChecked());
-        cbAutoLogin.setOnCheckedChangeListener((b, checked) -> etPassword.setEnabled(checked));
+        // Typing a password turns auto-login on (unticking it still deletes the saved one on Save).
+        etPassword.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                if (s.length() > 0) cbAutoLogin.setChecked(true);
+            }
+        });
 
         findViewById(R.id.BTSave).setOnClickListener((v) -> save());
     }
