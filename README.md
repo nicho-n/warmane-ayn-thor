@@ -71,14 +71,12 @@ The app installs these. Only their own folders are replaced; other addons are le
 |---|---|---|
 | `ThorControls` | Always | Sets up ConsolePort for the controller layout and the right-stick camera; Thor layout fixes (`/thor`). |
 | `WoWMobileLink` | Always | Sends unit info to the touch targeting page. |
-| ConsolePortLK | If ConsolePort is missing or is WoW Imito's | Controller UI. |
-| NotPlater | If missing | Nameplates. |
+| ConsolePortLK | Always | Controller UI. Replaces any other ConsolePort. |
+| NotPlater | If missing | Nameplates. Required for touch targeting. |
 
 `ThorControls` and `WoWMobileLink` are updated on Play when the app has a newer version.
-
-Coming from WoW Imito: its ConsolePort is replaced with the standard one and its addons
-(WoWImito, ImitoTouchUI) are moved to `Interface/AddOns-disabled`. Your ConsolePort
-bindings are kept.
+Your ConsolePort bindings are kept. If WoW Imito's addons are installed, they're moved to
+`Interface/AddOns-disabled`.
 
 ## Building
 
@@ -97,7 +95,7 @@ build is unsigned.
   this is forked from.
 - [AYN Thor WoW Launcher](https://github.com/wyattabuntjer/AYN-Thor-WoW-Launcher) by
   wyattabuntjer: the bottom-screen pad is ported from it.
-- [WoW Imito](https://github.com/MrAnonymz/WoW-Imito) by MrAnonymz: uses its controls.
+- [WoW Imito](https://github.com/MrAnonymz/WoW-Imito) by MrAnonymz: original inspiration.
 - [Winlator](https://github.com/brunodev85/winlator) by brunodev85: the Wine + Box64
   engine.
 - [Box64](https://github.com/ptitSeb/box64) by ptitSeb and contributors.

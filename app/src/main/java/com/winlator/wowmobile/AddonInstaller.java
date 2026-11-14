@@ -27,9 +27,9 @@ import java.util.zip.ZipOutputStream;
  * Installs the addons this app needs into the game's Interface/AddOns:
  *  - ThorControls and WoWMobileLink (this app's own; also updated on Play when the app
  *    carries a newer version),
- *  - NotPlater, if it isn't there,
- *  - ConsolePortLK (stock, bundled), if ConsolePort is missing or is WoW Imito's modified
- *    one. In that case WoW Imito's own addons are moved to Interface/AddOns-disabled.
+ *  - NotPlater, if it isn't there (touch targeting reads its nameplates),
+ *  - the bundled stock ConsolePortLK, replacing whatever ConsolePort is there. WoW Imito's
+ *    own addons, which need its modified ConsolePort, are moved to Interface/AddOns-disabled.
  * Before installing, the whole AddOns folder is zipped into the game folder. Only the
  * folders of the addons being installed (or moved) are touched.
  */
@@ -57,22 +57,13 @@ public class AddonInstaller {
         return gameFolder.getAddOnsDir();
     }
 
-    /** ConsolePort is missing, or is WoW Imito's modified one (which needs WoWImito). */
-    public boolean needsConsolePort() {
-        File toc = new File(addOnsDir(), "ConsolePort/ConsolePort.toc");
-        if (!toc.isFile()) return true;
-        return new File(addOnsDir(), "ConsolePort/ImitoIntegration.lua").isFile() ||
-               FileUtils.readString(toc).contains("RequiredDeps: WoWImito");
-    }
-
     public boolean needsNotPlater() {
         return !new File(addOnsDir(), NOTPLATER + "/" + NOTPLATER + ".toc").isFile();
     }
 
-    /** WoW Imito's addons that will be moved out (only when its ConsolePort is replaced). */
+    /** WoW Imito's addons present, which [install] moves out (they need WoW Imito's ConsolePort). */
     public List<String> wowImitoAddonsToDisable() {
         List<String> names = new ArrayList<>();
-        if (!needsConsolePort()) return names;
         for (String name : WOW_IMITO) if (new File(addOnsDir(), name).isDirectory()) names.add(name);
         return names;
     }
@@ -80,7 +71,7 @@ public class AddonInstaller {
     /** Names of the addons [install] will put in, for the confirmation popup. */
     public List<String> plan() {
         List<String> names = new ArrayList<>();
-        if (needsConsolePort()) names.add("ConsolePortLK");
+        names.add("ConsolePortLK");
         for (String name : OWN) names.add(name);
         if (needsNotPlater()) names.add("NotPlater");
         return names;
@@ -128,10 +119,8 @@ public class AddonInstaller {
         File addOnsDir = addOnsDir();
         if (!addOnsDir.isDirectory() && !addOnsDir.mkdirs()) throw new IOException("can't create " + addOnsDir);
 
-        if (needsConsolePort()) {
-            disableWowImitoAddons();
-            installConsolePort();
-        }
+        disableWowImitoAddons();
+        installConsolePort();
         for (String name : OWN) installAddon(name);
         if (needsNotPlater()) installAddon(NOTPLATER);
     }

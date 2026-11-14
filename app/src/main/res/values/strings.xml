@@ -35,7 +35,7 @@
     <string name="wow_auto_login_no_password">Enter a password for auto-login</string>
     <string name="wow_addons_title">Install addons</string>
     <string name="wow_addons_message">These addons will be installed:\n%1$s\n\nA backup of your AddOns folder will be made in this folder. Continue?</string>
-    <string name="wow_addons_imito">WoW Imito\'s ConsolePort is replaced, so its addons (%1$s) will be moved to Interface/%2$s, where WoW doesn\'t load them.</string>
+    <string name="wow_addons_imito">WoW Imito\'s addons (%1$s) need its own ConsolePort, so they will be moved to Interface/%2$s, where WoW doesn\'t load them.</string>
     <string name="wow_addons_continue">Continue</string>
     <string name="wow_addons_installing">Backing up and installing addons…</string>
     <string name="wow_addons_done_backup">Addons installed. Your old AddOns folder was saved as %1$s in the game folder.</string>
