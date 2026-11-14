@@ -281,7 +281,10 @@ public class ConsolePortController {
      */
     public void setTouchActive(boolean active) {
         touchActive = active;
-        if (active) releaseCamera();
+        if (active) {
+            releaseCamera();
+            pointerPlaced = true;
+        }
         // TouchpadView lets go of its left click 30 ms after the finger lifts.
         // Wait past that so the camera's right button never overlaps it.
         else touchEndedAt = System.currentTimeMillis();
@@ -311,6 +314,14 @@ public class ConsolePortController {
                 float speed = pointerMode ? POINTER_SPEED : CAMERA_SPEED;
                 if (!pointerMode && !cameraHeld) {
                     cameraKeyHeld = cameraKey;
+                    // Until something has put the pointer on the game (a touch does), WoW's
+                    // mouselook doesn't re-centre it and the camera spins far too fast. The
+                    // right-mouse camera got this from its button press; the key camera
+                    // moves the pointer to the middle of the screen once instead, no click.
+                    if (cameraKeyHeld && !pointerPlaced) {
+                        pointerPlaced = true;
+                        xServer.injectPointerMove(xServer.screenInfo.width / 2, xServer.screenInfo.height / 2);
+                    }
                     if (cameraKeyHeld) xServer.injectKeyPress(XKeycode.KEY_KP_DIVIDE);
                     else xServer.injectPointerButtonPress(Pointer.Button.BUTTON_RIGHT);
                     cameraHeld = true;
@@ -361,6 +372,8 @@ public class ConsolePortController {
      */
     private boolean cameraKey;
     private boolean cameraKeyHeld;
+    /** The pointer has been put on the game (by a touch or by the first camera move). */
+    private boolean pointerPlaced;
 
     public void setCameraKey(boolean useKey) {
         if (cameraHeld) releaseCamera();
