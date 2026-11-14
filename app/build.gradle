@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 
 android {
     compileSdk 34
@@ -49,6 +50,10 @@ android {
 
             if (keystorePropsFile.exists()) signingConfig signingConfigs.release
         }
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
     }
 
     lintOptions {

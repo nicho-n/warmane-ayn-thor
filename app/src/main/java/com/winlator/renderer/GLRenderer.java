@@ -423,6 +423,36 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         return result;
     }
 
+    /**
+     * wow-mobile: reads one row of a window's texture (what the screen actually shows, including
+     * rows cropped off the display) on the GL thread. Calls back with RGBA bytes, or null.
+     * Used by the bottom pad's Target page (WowMobileLinkReader).
+     */
+    public void readTextureRow(final Drawable drawable, final int row, final Callback<byte[]> callback) {
+        xServerView.queueEvent(() -> {
+            byte[] result = null;
+            synchronized (drawable.renderLock) {
+                Texture texture = drawable.getTexture();
+                texture.updateFromDrawable();
+                if (texture.isAllocated() && row >= 0 && row < drawable.height) {
+                    int[] fbo = new int[1];
+                    GLES20.glGenFramebuffers(1, fbo, 0);
+                    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo[0]);
+                    GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, texture.getTextureId(), 0);
+                    if (GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) == GLES20.GL_FRAMEBUFFER_COMPLETE) {
+                        ByteBuffer buffer = ByteBuffer.allocateDirect(drawable.width * 4).order(ByteOrder.nativeOrder());
+                        GLES20.glReadPixels(0, row, drawable.width, 1, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buffer);
+                        result = new byte[drawable.width * 4];
+                        buffer.get(result);
+                    }
+                    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+                    GLES20.glDeleteFramebuffers(1, fbo, 0);
+                }
+            }
+            callback.call(result);
+        });
+    }
+
     public void takeWindowScreenshot(final Drawable drawable, final Callback<Bitmap> callback) {
         xServerView.queueEvent(() -> {
             synchronized (drawable.renderLock) {

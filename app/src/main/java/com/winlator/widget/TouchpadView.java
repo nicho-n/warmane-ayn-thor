@@ -79,7 +79,7 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
 
         float invAspect = 1.0f / viewTransformation.aspect;
         if (!xServer.getRenderer().isFullscreen()) {
-            XForm.makeTranslation(xform, -viewTransformation.viewOffsetX, -viewTransformation.viewOffsetY);
+            XForm.makeTranslation(xform, -viewTransformation.viewOffsetX, -viewTransformation.viewOffsetTop);
             XForm.scale(xform, invAspect, invAspect);
         }
         else XForm.makeScale(xform, invAspect, invAspect);
@@ -134,8 +134,96 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
         }
     }
 
+    // ---- Direct touch (wow-mobile): the pointer goes to the finger, like a touchscreen.
+    // Tap = left click, touch-and-drag = hold left and drag, two-finger tap = right click.
+    private static final int DIRECT_DRAG_DELAY_MS = 150;
+    private boolean directTouch = false;
+    private boolean directPending, directLeftDown, directTwoFinger;
+    private float directStartX, directStartY;
+    private final Runnable directBeginDrag = () -> {
+        if (directPending && !directTwoFinger) {
+            directPending = false;
+            pressDirectLeft();
+        }
+    };
+
+    public void setDirectTouch(boolean directTouch) {
+        this.directTouch = directTouch;
+    }
+
+    private void moveDirect(float x, float y) {
+        float[] p = XForm.transformPoint(xform, x, y);
+        xServer.injectPointerMove((int)p[0], (int)p[1]);
+    }
+
+    private void pressDirectLeft() {
+        if (!xServer.pointer.isButtonPressed(Pointer.Button.BUTTON_LEFT)) {
+            xServer.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT);
+            directLeftDown = true;
+        }
+    }
+
+    private void releaseDirectLeft() {
+        if (directLeftDown) {
+            directLeftDown = false;
+            xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT);
+        }
+    }
+
+    private boolean onDirectTouchEvent(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                directTwoFinger = false;
+                directStartX = event.getX();
+                directStartY = event.getY();
+                moveDirect(directStartX, directStartY);
+                directPending = true;
+                postDelayed(directBeginDrag, DIRECT_DRAG_DELAY_MS);
+                break;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                // A second finger before the drag started means right click.
+                if (directPending) {
+                    directPending = false;
+                    removeCallbacks(directBeginDrag);
+                    directTwoFinger = true;
+                }
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (directTwoFinger) break;
+                if (directPending && Math.hypot(event.getX() - directStartX, event.getY() - directStartY) >= MAX_TAP_TRAVEL_DISTANCE) {
+                    directPending = false;
+                    removeCallbacks(directBeginDrag);
+                    pressDirectLeft();
+                }
+                moveDirect(event.getX(), event.getY());
+                break;
+            case MotionEvent.ACTION_UP:
+                removeCallbacks(directBeginDrag);
+                if (directTwoFinger) {
+                    xServer.injectPointerButtonPress(Pointer.Button.BUTTON_RIGHT);
+                    postDelayed(() -> xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_RIGHT), 30);
+                }
+                else if (directPending) {
+                    pressDirectLeft();
+                    postDelayed(this::releaseDirectLeft, 30);
+                }
+                else releaseDirectLeft();
+                directPending = false;
+                directTwoFinger = false;
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                removeCallbacks(directBeginDrag);
+                directPending = false;
+                directTwoFinger = false;
+                releaseDirectLeft();
+                break;
+        }
+        return true;
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (directTouch && isEnabled() && !event.isFromSource(InputDevice.SOURCE_MOUSE)) return onDirectTouchEvent(event);
         int actionIndex = event.getActionIndex();
         int pointerId = event.getPointerId(actionIndex);
         int actionMasked = event.getActionMasked();
@@ -190,17 +278,24 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
         return true;
     }
 
+    // From AYN Thor WoW Launcher: lets the bottom-screen pad stop taps from clicking while it holds a mouse button.
+    private boolean tapClicksSuppressed = false;
+
+    public void setTapClicksSuppressed(boolean suppressed) {
+        this.tapClicksSuppressed = suppressed;
+    }
+
     private void handleFingerUp(Finger finger1) {
         switch (numFingers) {
             case 1:
-                if (finger1.isTap()) {
+                if (finger1.isTap() && !tapClicksSuppressed) {
                     if (moveCursorToTouchpoint) xServer.injectPointerMove(finger1.x, finger1.y);
                     pressPointerButtonLeft(finger1);
                 }
                 break;
             case 2:
                 Finger finger2 = findSecondFinger(finger1);
-                if (finger2 != null && finger1.isTap()) pressPointerButtonRight(finger1);
+                if (finger2 != null && finger1.isTap() && !tapClicksSuppressed) pressPointerButtonRight(finger1);
                 break;
             case 4:
                 if (fourFingersTapCallback != null) {

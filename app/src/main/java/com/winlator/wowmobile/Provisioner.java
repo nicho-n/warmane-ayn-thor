@@ -96,6 +96,31 @@ public class Provisioner {
     public boolean provision() {
         if (!gameFolder.isValid()) return false;
 
+        // A folder set up by WoW Imito already has its own ConsolePort (fixed
+        // F1-F12 calibration, see docs/wowimito-interface.md). Installing the
+        // bundled ConsolePortLK, rewriting bindings or seeding settings would
+        // overwrite it, so leave every game file as it is.
+        if (isWowImitoFolder()) {
+            // WoW Imito rewrites Config.wtf without this; without it Wine draws a
+            // title bar and the game doesn't fill the screen. The user agreed to it.
+            if (!"1".equals(getConfigValue("gxMaximize"))) setConfigValue("gxMaximize", "1");
+            try {
+                marker.put("provisionVersion", PROVISION_VERSION);
+                marker.put("wowImito", true);
+                JSONObject provisionedAccounts = marker.optJSONObject("accounts");
+                if (provisionedAccounts == null) {
+                    provisionedAccounts = new JSONObject();
+                    marker.put("accounts", provisionedAccounts);
+                }
+                for (File accountDir : gameFolder.getAccountDirs()) provisionedAccounts.put(accountDir.getName(), PROVISION_VERSION);
+                saveMarker();
+                return true;
+            }
+            catch (JSONException e) {
+                return false;
+            }
+        }
+
         try {
             if (marker.optInt("provisionVersion", 0) < PROVISION_VERSION) {
                 if (!installAddons()) return false;
@@ -130,6 +155,13 @@ public class Provisioner {
         catch (JSONException e) {
             return false;
         }
+    }
+
+    /** True when WoW Imito's addons (WoWImito + its modified ConsolePort) are installed. */
+    public boolean isWowImitoFolder() {
+        File addOnsDir = gameFolder.getAddOnsDir();
+        return new File(addOnsDir, "WoWImito/WoWImito.toc").isFile() &&
+               new File(addOnsDir, "ConsolePort/ImitoIntegration.lua").isFile();
     }
 
     /** Extracts the bundled ConsolePortLK release into Interface/AddOns. */

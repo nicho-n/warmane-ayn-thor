@@ -89,6 +89,38 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"/>
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="@string/wow_auto_login"
+                android:textStyle="bold"
+                android:textColor="?attr/colorPrimaryText"/>
+
+            <CheckBox
+                android:id="@+id/CBAutoLogin"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/wow_auto_login_enable"/>
+
+            <EditText
+                android:id="@+id/ETPassword"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:hint="@string/wow_password_hint"
+                android:importantForAutofill="no"
+                android:inputType="textPassword"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/wow_auto_login_note"
+                android:textSize="13sp"
+                android:textColor="?attr/colorSecondaryText"/>
+
             <Button
                 android:id="@+id/BTSave"
                 android:layout_width="match_parent"

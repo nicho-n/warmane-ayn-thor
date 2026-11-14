@@ -1,0 +1,9 @@
+box64-0.4.5.tzst: Box64 (MIT licence, https://github.com/ptitSeb/box64), built from
+upstream commit d96343fbb (2026-10-21), unmodified.
+Built with aarch64-linux-gnu-gcc 11.4 (Ubuntu 22.04):
+  cmake .. -DARM64=ON -DBAD_SIGNAL=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+then stripped. Packed as ./usr/local/bin/box64, like box64-0.4.0.tzst.
+Linked with the app's loader paths (as the 0.4.0 package has):
+  -Wl,--dynamic-linker=/data/data/it.wowmobile/files/rootfs/lib/ld-linux-aarch64.so.1
+  -Wl,-rpath,/data/data/it.wowmobile/files/rootfs/lib -Wl,--enable-new-dtags
+If the application id changes, rebuild with the new path.

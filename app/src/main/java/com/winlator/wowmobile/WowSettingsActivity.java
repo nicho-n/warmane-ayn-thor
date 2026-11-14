@@ -3,6 +3,7 @@ package com.winlator.wowmobile;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.ArrayAdapter;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -22,7 +23,7 @@ import java.util.LinkedHashSet;
  * Edits WoW's own configuration (Config.wtf + realmlist.wtf) while the game is off.
  */
 public class WowSettingsActivity extends AppCompatActivity {
-    private static final String[] RESOLUTIONS = {"800x360", "960x432", "1200x540", "1600x720"};
+    private static final String[] RESOLUTIONS = {"800x360", "960x432", "1200x540", "1600x720", "1920x1080"};
     private static final String[] FARCLIP_LABELS = {"Near (fastest)", "Medium", "Far (slower)"};
     private static final String[] FARCLIP_VALUES = {"400", "727", "1000"};
 
@@ -33,6 +34,8 @@ public class WowSettingsActivity extends AppCompatActivity {
     private Spinner sResolution;
     private Spinner sFarclip;
     private ArrayList<String> realmlistItems;
+    private CheckBox cbAutoLogin;
+    private EditText etPassword;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,6 +64,13 @@ public class WowSettingsActivity extends AppCompatActivity {
 
         loadRealmlists();
         loadGraphics();
+
+        cbAutoLogin = findViewById(R.id.CBAutoLogin);
+        etPassword = findViewById(R.id.ETPassword);
+        cbAutoLogin.setChecked(LoginSecret.isEnabled(this));
+        if (LoginSecret.hasPassword(this)) etPassword.setHint(R.string.wow_password_saved_hint);
+        etPassword.setEnabled(cbAutoLogin.isChecked());
+        cbAutoLogin.setOnCheckedChangeListener((b, checked) -> etPassword.setEnabled(checked));
 
         findViewById(R.id.BTSave).setOnClickListener((v) -> save());
     }
@@ -128,6 +138,19 @@ public class WowSettingsActivity extends AppCompatActivity {
             }
         }
         else host = realmlistItems.get(sRealmlist.getSelectedItemPosition());
+
+        String password = etPassword.getText().toString();
+        if (cbAutoLogin.isChecked()) {
+            if (password.isEmpty() && !LoginSecret.hasPassword(this)) {
+                AppUtils.showToast(this, R.string.wow_auto_login_no_password);
+                return;
+            }
+            if (!LoginSecret.save(this, password.isEmpty() ? null : password)) {
+                AppUtils.showToast(this, R.string.wow_auto_login_no_password);
+                return;
+            }
+        }
+        else LoginSecret.clear(this);
 
         provisioner.ensureRealmlist(host);
         provisioner.setConfigValue("gxResolution", RESOLUTIONS[sResolution.getSelectedItemPosition()]);

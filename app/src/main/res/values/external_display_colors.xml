@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- From AYN Thor WoW Launcher (GPL-3.0), used by the bottom-screen pad. -->
+<resources>
+    <color name="external_display_surface_background">#000000</color>
+    <color name="external_display_key_background">#161616</color>
+    <color name="external_display_key_color">#D9D9D9</color>
+</resources>

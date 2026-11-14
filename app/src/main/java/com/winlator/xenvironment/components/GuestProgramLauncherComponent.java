@@ -119,6 +119,12 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         Context context = environment.getContext();
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
         String box64Version = preferences.getString("box64_version", DefaultVersion.BOX64);
+        // 0.4.0 was the old built-in default (written by first-run setup). Warmane disconnects it at the
+        // character list, while 0.4.5 (upstream d96343f, same base as WoW Imito) is expected to work.
+        if (box64Version.equals("0.4.0")) {
+            box64Version = DefaultVersion.BOX64;
+            preferences.edit().putString("box64_version", box64Version).apply();
+        }
         String currentBox64Version = preferences.getString("current_box64_version", "");
 
         if (!box64Version.equals(currentBox64Version)) {

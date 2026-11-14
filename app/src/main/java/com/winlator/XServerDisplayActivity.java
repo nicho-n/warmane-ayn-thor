@@ -91,6 +91,7 @@ import com.winlator.xserver.ScreenInfo;
 import com.winlator.xserver.Window;
 import com.winlator.xserver.WindowManager;
 import com.winlator.xserver.XServer;
+import com.winlator.wowmobile.ConsolePortController;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -109,6 +110,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private DrawerLayout drawerLayout;
     private Container container;
     private XServer xServer;
+    private ConsolePortController consolePortController;
+    private app.gamenative.externaldisplay.ExternalDisplayInputController bottomScreenPad;
+    // Pointer visibility: shown in R3 pointer mode, while a finger is on either screen, and for
+    // a few seconds after using the bottom pad's trackpad. Hidden otherwise, like WoW Imito.
+    private static final int CURSOR_LINGER_MS = 3000;
+    private boolean cursorPointerMode, cursorTopTouch, cursorTrackpadTouch, gameWindowShown;
+    private long cursorTrackpadUntil;
+    private final Runnable cursorUpdate = this::updateCursorVisibility;
+    private final android.os.Handler signalHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private InputControlsManager inputControlsManager;
     private RootFS rootFS;
     private FrameRating frameRating;
@@ -201,6 +211,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             String graphicsDriverConfig = container.getGraphicsDriverConfig();
             audioDriverConfig = new KeyValueSet(container.getAudioDriverConfig());
             screenInfo = new ScreenInfo(container.getScreenSize());
+            com.winlator.renderer.ViewTransformation.cropBottom = Integer.parseInt(container.getExtra("cropBottom", "0"));
 
             if (shortcut != null) {
                 graphicsDriver = shortcut.getExtra("graphicsDriver", container.getGraphicsDriver());
@@ -233,6 +244,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         inputControlsManager = new InputControlsManager(this);
         xServer = new XServer(this, screenInfo);
         xServer.setWinHandler(winHandler);
+        consolePortController = new ConsolePortController(xServer, winHandler);
         final boolean[] flags = {false, shortcut != null || getIntent().hasExtra("exec_path")};
         xServer.windowManager.addOnWindowModificationListener(new WindowManager.OnWindowModificationListener() {
             @Override
@@ -243,7 +255,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             @Override
             public void onMapWindow(Window window) {
                 if (!flags[0] && window.isRenderable() && !window.getClassName().isEmpty()) {
-                    xServerView.getRenderer().setCursorVisible(true);
+                    gameWindowShown = true;
+                    runOnUiThread(XServerDisplayActivity.this::updateCursorVisibility);
                     preloaderDialog.closeOnUiThread();
                     flags[0] = true;
                 }
@@ -327,6 +340,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     @Override
     protected void onDestroy() {
+        if (bottomScreenPad != null) bottomScreenPad.stop();
+        signalHandler.removeCallbacksAndMessages(null);
+        app.gamenative.externaldisplay.PadBridge.INSTANCE.setTrackpadTouchListener(null);
+        app.gamenative.externaldisplay.PadBridge.INSTANCE.setControllerModifierHold(null);
+        app.gamenative.externaldisplay.PadBridge.INSTANCE.setTargetPageListener(null);
+        if (linkReader != null) linkReader.stop();
+        if (autoLogin != null) autoLogin.stop();
+        if (glueScreens != null) glueScreens.stop();
         winHandler.stop();
         if (environment != null) environment.stopEnvironmentComponents();
         super.onDestroy();
@@ -580,6 +601,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         touchpadView = new TouchpadView(this, xServer, capturePointerOnExternalMouse);
         touchpadView.setSensitivity(globalCursorSpeed);
         touchpadView.setMoveCursorToTouchpoint(preferences.getBoolean("move_cursor_to_touchpoint", false));
+        // wow-mobile: the top screen is a touchscreen (pointer goes to the finger, drag holds left button).
+        touchpadView.setDirectTouch(preferences.getBoolean("direct_touch", true));
         touchpadView.setFourFingersTapCallback(() -> {
             if (!drawerLayout.isDrawerOpen(GravityCompat.START)) drawerLayout.openDrawer(GravityCompat.START);
         });
@@ -591,6 +614,49 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         inputControlsView.setXServer(xServer);
         inputControlsView.setVisibility(View.GONE);
         rootView.addView(inputControlsView);
+
+        // Thor bottom-screen pad (ported from AYN Thor WoW Launcher). Shows on a second
+        // presentation display if there is one; does nothing on single-screen devices.
+        app.gamenative.externaldisplay.PadSettings.INSTANCE.init(this);
+        app.gamenative.externaldisplay.PadBridge.INSTANCE.setTrackpadTouchListener(active -> {
+            if (consolePortController != null) consolePortController.setTouchActive(active);
+            cursorTrackpadTouch = active;
+            if (!active) cursorTrackpadUntil = System.currentTimeMillis() + CURSOR_LINGER_MS;
+            updateCursorVisibility();
+            return kotlin.Unit.INSTANCE;
+        });
+        if (consolePortController != null) consolePortController.setPointerModeListener(on -> {
+            cursorPointerMode = on;
+            updateCursorVisibility();
+        });
+        final TouchpadView mainTouchpad = touchpadView;
+        bottomScreenPad = new app.gamenative.externaldisplay.ExternalDisplayInputController(this, xServer, () -> mainTouchpad);
+        bottomScreenPad.setMode(app.gamenative.externaldisplay.ExternalDisplayInputController.Mode.BUTTONS);
+        if (preferences.getBoolean("bottom_screen_pad", true)) bottomScreenPad.start();
+
+        app.gamenative.externaldisplay.PadBridge.INSTANCE.setControllerModifierHold(hold -> {
+            if (consolePortController != null) consolePortController.setModifiersSuspended(hold);
+            return kotlin.Unit.INSTANCE;
+        });
+        // Target page: turn the WoWMobileLink addon's data row on/off and read it while shown.
+        linkReader = new app.gamenative.externaldisplay.WowMobileLinkReader(xServer);
+        app.gamenative.externaldisplay.PadBridge.INSTANCE.setTargetPageListener(visible -> {
+            runOnUiThread(() -> setLinkActive(visible));
+            return kotlin.Unit.INSTANCE;
+        });
+
+        // Login / character select: the controller works there (A = Enter), and auto-login
+        // (WoW Settings) types the saved password once the login screen shows.
+        glueScreens = new app.gamenative.externaldisplay.GlueScreenWatcher(linkReader);
+        glueScreens.start();
+        if (consolePortController != null) consolePortController.setGlueScreens(glueScreens);
+        if (com.winlator.wowmobile.LoginSecret.isEnabled(this)) {
+            String password = com.winlator.wowmobile.LoginSecret.load(this);
+            if (password != null && !password.isEmpty()) {
+                autoLogin = new app.gamenative.externaldisplay.AutoLogin(xServer, glueScreens, password);
+                autoLogin.start();
+            }
+        }
 
         if (container != null && container.getHUDMode() != FrameRating.Mode.DISABLED.ordinal()) {
             frameRating = new FrameRating(this);
@@ -777,13 +843,74 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        if (consolePortController != null && consolePortController.onGenericMotionEvent(event)) return true;
         return !winHandler.onGenericMotionEvent(event) && !touchpadView.onExternalMouseEvent(event) && super.dispatchGenericMotionEvent(event);
     }
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (consolePortController != null && consolePortController.onKeyEvent(event)) return true;
         return (!inputControlsView.onKeyEvent(event) && !winHandler.onKeyEvent(event) && xServer.keyboard.onKeyEvent(event)) ||
                (!ExternalController.isGameController(event.getDevice()) && super.dispatchKeyEvent(event));
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (consolePortController != null) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) consolePortController.setTouchActive(true);
+            else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) consolePortController.setTouchActive(false);
+        }
+        int touchAction = event.getActionMasked();
+        if (touchAction == MotionEvent.ACTION_DOWN) { cursorTopTouch = true; updateCursorVisibility(); }
+        else if (touchAction == MotionEvent.ACTION_UP || touchAction == MotionEvent.ACTION_CANCEL) { cursorTopTouch = false; updateCursorVisibility(); }
+        return super.dispatchTouchEvent(event);
+    }
+
+    private app.gamenative.externaldisplay.WowMobileLinkReader linkReader;
+    private app.gamenative.externaldisplay.AutoLogin autoLogin;
+    private app.gamenative.externaldisplay.GlueScreenWatcher glueScreens;
+    private final Runnable linkKeepAlive = new Runnable() {
+        @Override
+        public void run() {
+            sendLinkChord(com.winlator.xserver.XKeycode.KEY_K);
+            signalHandler.postDelayed(this, 5000);
+        }
+    };
+
+    private void setLinkActive(boolean active) {
+        signalHandler.removeCallbacks(linkKeepAlive);
+        if (active) {
+            linkKeepAlive.run();
+            linkReader.start();
+        }
+        else {
+            sendLinkChord(com.winlator.xserver.XKeycode.KEY_L);
+            linkReader.stop();
+        }
+    }
+
+    /** Ctrl+Alt+Shift+key with the right-hand modifiers, with the controller's trigger modifiers let go. */
+    private void sendLinkChord(com.winlator.xserver.XKeycode key) {
+        if (consolePortController != null) consolePortController.setModifiersSuspended(true);
+        xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_CTRL_R);
+        xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_ALT_R);
+        xServer.injectKeyPress(com.winlator.xserver.XKeycode.KEY_SHIFT_R);
+        xServer.injectKeyPress(key);
+        xServer.injectKeyRelease(key);
+        xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_SHIFT_R);
+        xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_ALT_R);
+        xServer.injectKeyRelease(com.winlator.xserver.XKeycode.KEY_CTRL_R);
+        if (consolePortController != null) consolePortController.setModifiersSuspended(false);
+    }
+
+    private void updateCursorVisibility() {
+        if (xServerView == null || !gameWindowShown) return;
+        long now = System.currentTimeMillis();
+        boolean lingering = now < cursorTrackpadUntil;
+        xServerView.getRenderer().setCursorVisible(cursorPointerMode || cursorTopTouch || cursorTrackpadTouch || lingering);
+        signalHandler.removeCallbacks(cursorUpdate);
+        if (lingering) signalHandler.postDelayed(cursorUpdate, cursorTrackpadUntil - now);
     }
 
     public InputControlsView getInputControlsView() {

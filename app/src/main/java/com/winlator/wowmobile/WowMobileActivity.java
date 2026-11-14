@@ -9,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.view.KeyEvent;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -77,6 +78,23 @@ public class WowMobileActivity extends AppCompatActivity {
             }
             else finish();
         }
+    }
+
+    /**
+     * Controller: A (bottom face button) presses Play, unless the D-pad has moved focus to
+     * another button, which A then presses as usual. Start always presses Play.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+        View focus = getCurrentFocus();
+        boolean play = code == KeyEvent.KEYCODE_BUTTON_START ||
+            (code == KeyEvent.KEYCODE_BUTTON_A && (focus == null || focus == btPlay || !(focus instanceof Button)));
+        if (play) {
+            if (event.getAction() == KeyEvent.ACTION_UP && event.getRepeatCount() == 0 && btPlay.isEnabled() && !preloaderDialog.isShowing()) onPlay();
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     private boolean requestAppPermissions() {

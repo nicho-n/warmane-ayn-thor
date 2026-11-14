@@ -48,9 +48,22 @@ public class WowContainerHelper {
 
     /** Creates the WoW container with tuned defaults if it does not exist yet. */
     public void ensureContainerAsync(GameFolder gameFolder, Callback<Container> callback) {
+        String screenSize = getScreenSize(gameFolder);
         Container existing = getContainer();
         if (existing != null) {
             ensureGameDrive(existing, gameFolder);
+            boolean changed = false;
+            if (!screenSize.equals(existing.getScreenSize())) {
+                existing.setScreenSize(screenSize);
+                changed = true;
+            }
+            if (applyCrop(existing, screenSize)) changed = true;
+            String envVars = withImitoBox64(existing.getEnvVars(), gameFolder);
+            if (!envVars.equals(existing.getEnvVars())) {
+                existing.setEnvVars(envVars);
+                changed = true;
+            }
+            if (changed) existing.saveData();
             callback.call(existing);
             return;
         }
@@ -58,19 +71,69 @@ public class WowContainerHelper {
         try {
             JSONObject data = new JSONObject();
             data.put("name", CONTAINER_NAME);
-            data.put("screenSize", DEFAULT_SCREEN_SIZE);
-            data.put("envVars", Container.DEFAULT_ENV_VARS);
+            data.put("screenSize", screenSize);
+            data.put("envVars", withImitoBox64(Container.DEFAULT_ENV_VARS, gameFolder));
             data.put("graphicsDriver", GraphicsDrivers.getDefaultDriver(context));
             data.put("dxwrapper", Container.DEFAULT_DXWRAPPER);
             data.put("audioDriver", Container.DEFAULT_AUDIO_DRIVER);
             data.put("wincomponents", Container.DEFAULT_WINCOMPONENTS);
             data.put("drives", Container.DEFAULT_DRIVES + GAME_DRIVE_LETTER+":"+gameFolder.root.getPath());
             data.put("startupSelection", Container.STARTUP_SELECTION_AGGRESSIVE);
-            manager.createContainerAsync(data, callback);
+            manager.createContainerAsync(data, (container) -> {
+                if (container != null && applyCrop(container, screenSize)) container.saveData();
+                callback.call(container);
+            });
         }
         catch (JSONException e) {
             callback.call(null);
         }
+    }
+
+    /**
+     * WoW Imito folders keep their own Config.wtf (windowed, e.g. 1920x1080), which
+     * the provisioner no longer rewrites to 960x432. Give the Windows desktop the
+     * same size so the game window fills it instead of hanging off a small desktop.
+     */
+    private String getScreenSize(GameFolder gameFolder) {
+        Provisioner provisioner = new Provisioner(context, gameFolder);
+        if (!provisioner.isWowImitoFolder()) return DEFAULT_SCREEN_SIZE;
+        String resolution = provisioner.getConfigValue("gxResolution");
+        if (resolution != null && resolution.matches("\\d{3,4}x\\d{3,4}")) {
+            // CROP_BOTTOM extra rows below the visible picture, for the WoWMobileLink data row.
+            String[] wh = resolution.split("x");
+            return wh[0] + "x" + (Integer.parseInt(wh[1]) + CROP_BOTTOM);
+        }
+        return DEFAULT_SCREEN_SIZE;
+    }
+
+    /** Hidden rows at the bottom of the desktop (see ViewTransformation.cropBottom). */
+    public static final int CROP_BOTTOM = 5;
+
+    /** Stores how many bottom rows the renderer hides; returns true if it changed. */
+    private static boolean applyCrop(Container container, String screenSize) {
+        String crop = String.valueOf(screenSize.equals(DEFAULT_SCREEN_SIZE) ? 0 : CROP_BOTTOM);
+        if (crop.equals(container.getExtra("cropBottom"))) return false;
+        container.putExtra("cropBottom", crop);
+        return true;
+    }
+
+    /**
+     * Box64 settings WoW Imito ships (assets/box64/env_vars.json defaults in
+     * pub.wowimito 1.4.1), applied to WoW Imito folders. Container env vars are
+     * applied after the Box64 preset, so these take precedence.
+     */
+    private static final String[][] IMITO_BOX64 = {
+        {"BOX64_DYNAREC_SAFEFLAGS", "2"}, {"BOX64_DYNAREC_FASTNAN", "1"}, {"BOX64_DYNAREC_FASTROUND", "1"},
+        {"BOX64_DYNAREC_X87DOUBLE", "0"}, {"BOX64_DYNAREC_BIGBLOCK", "1"}, {"BOX64_DYNAREC_STRONGMEM", "0"},
+        {"BOX64_DYNAREC_FORWARD", "128"}, {"BOX64_DYNAREC_CALLRET", "1"}, {"BOX64_DYNAREC_WAIT", "1"},
+        {"BOX64_DYNAREC_NATIVEFLAGS", "0"}, {"BOX64_DYNAREC_WEAKBARRIER", "0"},
+    };
+
+    private String withImitoBox64(String current, GameFolder gameFolder) {
+        if (!new Provisioner(context, gameFolder).isWowImitoFolder()) return current;
+        com.winlator.core.EnvVars envVars = new com.winlator.core.EnvVars(current);
+        for (String[] item : IMITO_BOX64) envVars.put(item[0], item[1]);
+        return envVars.toString();
     }
 
     /** Keeps the F: drive pointing at the currently selected game folder. */
@@ -112,7 +175,11 @@ public class WowContainerHelper {
             "StartupWMClass=wow.exe\n" +
             "\n[Extra Data]\n";
 
-        int profileId = getControlsProfileId();
+        // The bundled touch profile sends letter keys for the original
+        // ConsolePortLK. WoW Imito's ConsolePort uses F1-F12 from the
+        // controller instead, so those buttons would misfire: use plain
+        // touchpad taps there.
+        int profileId = new Provisioner(context, gameFolder).isWowImitoFolder() ? 0 : getControlsProfileId();
         if (profileId > 0) content += "controlsProfile="+profileId+"\n";
 
         FileUtils.writeString(shortcutFile, content);
