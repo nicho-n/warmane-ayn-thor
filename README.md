@@ -25,23 +25,25 @@ ConsolePort's binding menu; `/thor defaults` puts it back on the current charact
 ABXY and the D-pad are action bar buttons; holding L2, R2 or both switches to another
 set of action bar buttons. Other buttons:
 
-- L1: Target nearest enemy
-- R1: Jump
-- Select: Target nearest friend
-- L2 + Select: World map
-- R2 + Select: Camera zoom out
-- L2 + R2 + Select: Camera zoom in
-- Start: Interact with the unit under the pointer
-- L2 + Start: Game menu
-- R2 + Start: Raid cursor
-- L2 + R2 + Start: Open chat
-- L2 + D-pad up / down: Camera zoom in / out
-- D-pad right: Run/walk
-- R2 + L1: Minimap zoom in
-- L2 + R2 + B: Open all bags
-- L2 + R2 + A: Utility ring
-- Left stick: Move
-- Right stick: Camera; R3 switches it to moving the pointer, L3 clicks
+| Button | Action |
+|---|---|
+| L1 | Target nearest enemy |
+| L1 + R2 | Minimap zoom in |
+| R1 | Jump |
+| Select | Target nearest friend |
+| Select + L2 | World map |
+| Select + R2 | Camera zoom out |
+| Select + L2 + R2 | Camera zoom in |
+| Start | Interact with the unit under the pointer |
+| Start + L2 | Game menu |
+| Start + R2 | Raid cursor |
+| Start + L2 + R2 | Open chat |
+| D-pad up / down + L2 | Camera zoom in / out |
+| D-pad right | Run/walk |
+| B + L2 + R2 | Open all bags |
+| A + L2 + R2 | Utility ring |
+| Left stick | Move |
+| Right stick | Camera; R3 switches it to moving the pointer, L3 clicks |
 
 ## Requirements
 
