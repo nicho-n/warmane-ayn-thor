@@ -105,7 +105,7 @@ local function migrateRunWalk()
     end
 end
 
-local defaults = { petbar = true, xpLift = 10, hideTriggers = true, hideTrail = true, defaultCastBar = true, hideGcd = true }
+local defaults = { petbar = true, xpLift = 10, hideTriggers = true, hideTrail = true, defaultCastBar = true, hideGcd = false }
 local db
 local pending = {}
 local events = CreateFrame("Frame")
@@ -269,8 +269,8 @@ end
 
 ---------------------------------------------------------------------------
 -- 9. Global cooldown sweep: every spell, instant or not, starts a 1.5 s cooldown
--- animation on every action button at once (dozens on ConsolePort's bar), which is
--- expensive under emulation. Skip sweeps that short; real cooldowns still show.
+-- animation on every action button at once. Shown by default (section 13 makes it
+-- cheap on ConsolePort's bar); /thor gcd off skips sweeps that short.
 ---------------------------------------------------------------------------
 local GCD_MAX = 1.5
 
@@ -491,6 +491,9 @@ events:SetScript("OnEvent", function(_, event, arg1)
             ThorControlsDB = ThorControlsDB or {}
             db = ThorControlsDB
             for k, v in pairs(defaults) do if db[k] == nil then db[k] = v end end
+            -- 1.39: the global cooldown sweep is shown again (cheap since section 13);
+            -- switch it back on once for those who had the old default.
+            if not db.gcdShown then db.gcdShown = true; db.hideGcd = false end
             applyCalibration()
             applyDefaultBindings()
             db.runWalkMoved = db.runWalkMoved or {}
