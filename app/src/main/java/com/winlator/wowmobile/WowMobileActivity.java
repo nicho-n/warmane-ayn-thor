@@ -45,6 +45,12 @@ public class WowMobileActivity extends AppCompatActivity {
     private TextView tvFolder;
     private TextView tvRealmlist;
     private Button btPlay;
+    private Button btUpdate;
+    private UpdateChecker.Release update;
+    private java.io.File updateApk;
+    private boolean downloading;
+    /** Sent to the "install unknown apps" setting: install as soon as the user comes back with it allowed. */
+    private boolean awaitingInstallPermission;
     private final PreloaderDialog preloaderDialog = new PreloaderDialog(this);
 
     @Override
@@ -59,6 +65,7 @@ public class WowMobileActivity extends AppCompatActivity {
         tvFolder = findViewById(R.id.TVWowFolder);
         tvRealmlist = findViewById(R.id.TVWowRealmlist);
         btPlay = findViewById(R.id.BTPlay);
+        btUpdate = findViewById(R.id.BTUpdate);
 
         applyPadStyle();
         btPlay.setOnClickListener((v) -> onPlay());
@@ -75,7 +82,116 @@ public class WowMobileActivity extends AppCompatActivity {
             }
         });
 
+        btUpdate.setAllCaps(false);
+        // Touch only: the controller's A must keep starting the game.
+        btUpdate.setFocusable(false);
+        btUpdate.setOnClickListener((v) -> onUpdate());
+        checkForUpdate();
+
         if (!requestAppPermissions()) RootFSInstaller.installIfNeeded(this);
+    }
+
+    /** Looks for a newer release on GitHub; the Update button appears above Play if there is one. */
+    private void checkForUpdate() {
+        String current = com.winlator.BuildConfig.VERSION_NAME;
+        Executors.newSingleThreadExecutor().execute(() -> {
+            UpdateChecker.Release release = UpdateChecker.findNewer(current);
+            if (release == null) return;
+            runOnUiThread(() -> {
+                update = release;
+                btUpdate.setText(getString(R.string.wow_update, release.version));
+                btUpdate.setVisibility(View.VISIBLE);
+                // A keeps starting the game: Play stays the focused button.
+                focusPlay();
+            });
+        });
+    }
+
+    /** Shows what's new since the installed version; Install downloads and installs it. */
+    private void onUpdate() {
+        if (update == null || downloading) return;
+        if (updateApk != null) {
+            installUpdate();
+            return;
+        }
+        // Same look as the launcher: dark panel, gold trim, cream serif text.
+        app.gamenative.externaldisplay.PadTheme theme = app.gamenative.externaldisplay.PadTheme.Companion.getDEFAULT();
+        float density = getResources().getDisplayMetrics().density;
+        int pad = Math.round(20 * density);
+        TextView title = new TextView(this);
+        title.setText(getString(R.string.wow_update_title, update.version));
+        title.setTextSize(20f);
+        title.setTextColor(theme.getText());
+        title.setTypeface(theme.getTypeface());
+        title.setPadding(pad, pad, pad, pad / 2);
+        TextView notes = new TextView(this);
+        notes.setText(update.changelog.isEmpty() ? getString(R.string.wow_update_no_notes) : update.changelog);
+        notes.setTextSize(14f);
+        notes.setTextColor(theme.getText());
+        notes.setLineSpacing(0f, 1.15f);
+        notes.setPadding(pad, 0, pad, pad / 2);
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.addView(notes);
+        androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setCustomTitle(title)
+            .setView(scroll)
+            .setPositiveButton(R.string.wow_update_install_button, (d, w) -> downloadUpdate())
+            .setNegativeButton(android.R.string.cancel, null)
+            .create();
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            android.graphics.drawable.GradientDrawable panel = new android.graphics.drawable.GradientDrawable();
+            panel.setColor(0xFF000000 | theme.getBackground());
+            panel.setCornerRadius(10 * density);
+            panel.setStroke(Math.round(2 * density), theme.getBorder());
+            dialog.getWindow().setBackgroundDrawable(panel);
+        }
+        for (int which : new int[]{android.content.DialogInterface.BUTTON_POSITIVE, android.content.DialogInterface.BUTTON_NEGATIVE}) {
+            Button b = dialog.getButton(which);
+            if (b == null) continue;
+            b.setTextColor(theme.getText());
+            b.setTypeface(theme.getTypeface());
+        }
+        Button install = dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE);
+        if (install != null) install.requestFocus();
+    }
+
+    /** Downloads the new version (progress on the button), then opens Android's installer. */
+    private void downloadUpdate() {
+        if (update == null || downloading) return;
+        if (updateApk != null) {
+            installUpdate();
+            return;
+        }
+        downloading = true;
+        btUpdate.setText(getString(R.string.wow_update_downloading, 0));
+        UpdateChecker.Release release = update;
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                java.io.File apk = UpdateChecker.download(this, release, (percent) -> runOnUiThread(() ->
+                    btUpdate.setText(percent >= 0 ? getString(R.string.wow_update_downloading, percent) : getString(R.string.wow_update_downloading_nosize))));
+                runOnUiThread(() -> {
+                    downloading = false;
+                    updateApk = apk;
+                    installUpdate();
+                });
+            }
+            catch (Exception e) {
+                runOnUiThread(() -> {
+                    downloading = false;
+                    btUpdate.setText(getString(R.string.wow_update_failed));
+                });
+            }
+        });
+    }
+
+    private void installUpdate() {
+        awaitingInstallPermission = false;
+        if (UpdateChecker.install(this, updateApk)) btUpdate.setText(getString(R.string.wow_update_install, update.version));
+        else {
+            awaitingInstallPermission = true;
+            btUpdate.setText(getString(R.string.wow_update_allow));
+        }
     }
 
     @Override
@@ -123,22 +239,68 @@ public class WowMobileActivity extends AppCompatActivity {
         for (int id : new int[]{R.id.TVWowSubtitle, R.id.TVWowFolder, R.id.TVWowRealmlist}) {
             ((TextView)findViewById(id)).setTextColor((theme.getText() & 0x00FFFFFF) | 0xB0000000);
         }
-        for (int id : new int[]{R.id.BTPlay, R.id.BTSelectFolder, R.id.BTWowSettings, R.id.BTDonate}) {
+        styleWowRedButton(findViewById(R.id.BTUpdate), density, theme.getTypeface());
+        for (int id : new int[]{R.id.BTPlay, R.id.BTSelectFolder, R.id.BTDonate}) {
             Button b = findViewById(id);
             android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
-            states.addState(new int[]{android.R.attr.state_pressed}, theme.buttonBackground(density, 10f, true, false, false, false, false, null, 1f));
-            states.addState(new int[]{}, theme.buttonBackground(density, 10f, false, false, false, id == R.id.BTPlay, false, null, 1f));
+            // Change Game Folder and Donate: dark grey trim, so Play stands out.
+            Integer trim = id == R.id.BTPlay ? null : Integer.valueOf(0xFF4A4744);
+            states.addState(new int[]{android.R.attr.state_pressed}, theme.buttonBackground(density, 10f, true, false, false, false, false, trim, 1f));
+            states.addState(new int[]{}, theme.buttonBackground(density, 10f, false, false, false, id == R.id.BTPlay, false, trim, 1f));
             b.setBackgroundTintList(null);
             b.setBackground(states);
             b.setStateListAnimator(null);
             b.setTextColor(theme.getText());
             b.setTypeface(theme.getTypeface());
         }
-        for (int id : new int[]{R.id.BTAdvanced, R.id.BTContainerSettings}) {
+        for (int id : new int[]{R.id.BTAdvanced, R.id.BTWowSettings, R.id.BTContainerSettings}) {
             Button b = findViewById(id);
             b.setTextColor((theme.getText() & 0x00FFFFFF) | 0xB0000000);
             b.setTypeface(theme.getTypeface());
         }
+    }
+
+    /**
+     * The red button of WoW's login and character screens ("Enter World"): a dark grey bevelled
+     * frame around a red fill that is darker at the top, with cream text.
+     */
+    private static void styleWowRedButton(Button b, float density, android.graphics.Typeface typeface) {
+        android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_pressed}, wowRed(density, 0xFF3E0804, 0xFF6E120A, 0xFF8C2214));
+        states.addState(new int[]{}, wowRed(density, 0xFF5C0C06, 0xFF9A190D, 0xFFC0301C));
+        b.setBackgroundTintList(null);
+        b.setBackground(states);
+        b.setStateListAnimator(null);
+        b.setTextColor(0xFFFFF0DC);
+        b.setTypeface(typeface);
+        b.setShadowLayer(2f * density, 0f, 1f * density, 0xFF1A0000);
+    }
+
+    private static android.graphics.drawable.Drawable wowRed(float density, int top, int middle, int bottom) {
+        float radius = 4f * density;
+        android.graphics.drawable.GradientDrawable outer = new android.graphics.drawable.GradientDrawable();
+        outer.setColor(0xFF1C1A19);
+        outer.setCornerRadius(radius);
+        android.graphics.drawable.GradientDrawable frame = new android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF8E8A86, 0xFF4A4644, 0xFF6E6A66});
+        frame.setCornerRadius(radius);
+        android.graphics.drawable.GradientDrawable fill = new android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, new int[]{top, middle, bottom});
+        fill.setCornerRadius(radius * 0.6f);
+        android.graphics.drawable.LayerDrawable layers = new android.graphics.drawable.LayerDrawable(
+            new android.graphics.drawable.Drawable[]{outer, frame, fill});
+        int o = Math.round(1.5f * density), f = Math.round(4f * density);
+        layers.setLayerInset(1, o, o, o, o);
+        layers.setLayerInset(2, f, f, f, f);
+        return layers;
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // Focus asked for before the window had it doesn't show: ask again now, so Play is
+        // highlighted from the start and it's clear A starts the game.
+        if (hasFocus) btPlay.post(this::focusPlay);
     }
 
     /** Shows the focus border on Play, so it's clear A starts the game. */
@@ -159,6 +321,9 @@ public class WowMobileActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (awaitingInstallPermission && updateApk != null && (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O || getPackageManager().canRequestPackageInstalls())) {
+            installUpdate();
+        }
         updateStatus();
         focusPlay();
         // Pick up phase-B provisioning after the guided first login + logout
@@ -179,12 +344,18 @@ public class WowMobileActivity extends AppCompatActivity {
         return path != null ? new GameFolder(path) : null;
     }
 
+    private void showStatus(int text) {
+        tvStatus.setText(text);
+        tvStatus.setVisibility(View.VISIBLE);
+    }
+
     private void updateStatus() {
         GameFolder gameFolder = getGameFolder();
+        ((Button)findViewById(R.id.BTSelectFolder)).setText(gameFolder == null ? R.string.wow_select_game_folder : R.string.wow_change_game_folder);
 
         if (gameFolder == null) {
             tvFolder.setText(R.string.wow_no_folder_selected);
-            tvStatus.setText(R.string.wow_status_select_folder);
+            showStatus(R.string.wow_status_select_folder);
             tvRealmlist.setText("");
             btPlay.setEnabled(false);
             return;
@@ -193,7 +364,7 @@ public class WowMobileActivity extends AppCompatActivity {
         tvFolder.setText(gameFolder.root.getPath());
 
         if (!gameFolder.isValid()) {
-            tvStatus.setText(R.string.wow_status_invalid_folder);
+            showStatus(R.string.wow_status_invalid_folder);
             tvRealmlist.setText("");
             btPlay.setEnabled(false);
             return;
@@ -205,16 +376,16 @@ public class WowMobileActivity extends AppCompatActivity {
 
         switch (provisioner.getStatus()) {
             case PENDING:
-                tvStatus.setText(R.string.wow_status_pending);
+                showStatus(R.string.wow_status_pending);
                 break;
             case WAITING_FIRST_LOGIN:
-                tvStatus.setText(R.string.wow_status_first_login);
+                showStatus(R.string.wow_status_first_login);
                 break;
             case READY:
-                tvStatus.setText(R.string.wow_status_ready);
+                tvStatus.setVisibility(View.GONE); // nothing to say when all is set up
                 break;
             default:
-                tvStatus.setText(R.string.wow_status_invalid_folder);
+                showStatus(R.string.wow_status_invalid_folder);
                 break;
         }
     }

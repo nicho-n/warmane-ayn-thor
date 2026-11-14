@@ -68,26 +68,36 @@
                     android:layout_marginTop="8dp"
                     android:textSize="13sp"
                     android:textColor="?attr/colorSecondaryText"/>
-
-                <Button
-                    android:id="@+id/BTSelectFolder"
-                    android:foreground="@drawable/focus_border"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/wow_select_game_folder"/>
             </LinearLayout>
 
-            <Button
-                android:id="@+id/BTPlay"
-                    android:foreground="@drawable/focus_border"
+            <!-- Play, with Update on its right when a newer version is out. -->
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="72dp"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="24dp"
-                android:text="@string/wow_play"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                android:backgroundTint="?attr/colorAccent"/>
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/BTPlay"
+                    android:foreground="@drawable/focus_border"
+                    android:layout_width="0dp"
+                    android:layout_height="72dp"
+                    android:layout_weight="2"
+                    android:text="@string/wow_play"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:backgroundTint="?attr/colorAccent"/>
+
+                <Button
+                    android:id="@+id/BTUpdate"
+                    android:foreground="@drawable/focus_border"
+                    android:layout_width="0dp"
+                    android:layout_height="72dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:textSize="17sp"
+                    android:visibility="gone"/>
+            </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -96,13 +106,13 @@
                 android:orientation="horizontal">
 
                 <Button
-                    android:id="@+id/BTWowSettings"
+                    android:id="@+id/BTSelectFolder"
                     android:foreground="@drawable/focus_border"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:layout_marginEnd="8dp"
-                    android:text="@string/wow_settings"/>
+                    android:text="@string/wow_select_game_folder"/>
 
                 <Button
                     android:id="@+id/BTDonate"
@@ -127,6 +137,16 @@
                     style="?android:attr/borderlessButtonStyle"
                     android:textColor="?attr/colorSecondaryText"
                     android:text="@string/wow_advanced"/>
+
+                <Button
+                    android:id="@+id/BTWowSettings"
+                    android:foreground="@drawable/focus_border"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    style="?android:attr/borderlessButtonStyle"
+                    android:textColor="?attr/colorSecondaryText"
+                    android:text="@string/wow_settings"/>
 
                 <Button
                     android:id="@+id/BTContainerSettings"

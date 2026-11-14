@@ -49,18 +49,20 @@ internal object SlashTyper {
         shift: Boolean,
         onSuspendModifiers: () -> List<XKeycode>,
         onResumeModifiers: (List<XKeycode>) -> Unit,
+        /** Ctrl+Alt(+Shift) normally; false for Alt+Shift chords. */
+        ctrl: Boolean = true,
     ) {
         if (busy) return
         val padMods = onSuspendModifiers()
         PadBridge.controllerModifierHold?.invoke(true)
-        xServer.injectKeyPress(XKeycode.KEY_CTRL_R)
+        if (ctrl) xServer.injectKeyPress(XKeycode.KEY_CTRL_R)
         xServer.injectKeyPress(XKeycode.KEY_ALT_R)
         if (shift) xServer.injectKeyPress(XKeycode.KEY_SHIFT_R)
         xServer.injectKeyPress(key)
         xServer.injectKeyRelease(key)
         if (shift) xServer.injectKeyRelease(XKeycode.KEY_SHIFT_R)
         xServer.injectKeyRelease(XKeycode.KEY_ALT_R)
-        xServer.injectKeyRelease(XKeycode.KEY_CTRL_R)
+        if (ctrl) xServer.injectKeyRelease(XKeycode.KEY_CTRL_R)
         PadBridge.controllerModifierHold?.invoke(false)
         onResumeModifiers(padMods)
     }

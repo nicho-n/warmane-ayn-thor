@@ -28,14 +28,16 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
   NPCs and players are listed). Players show in their class colour (red border for
   enemies, green for friends); NPCs show their nameplate colour, so NotPlater's threat
   colours carry over. Earthbind Totem is listed too. Units with a unique name are
-  targeted by name, which works while moving.
+  targeted by name, which works while moving. In battlegrounds, the BG tabs list up to 15 players per side
+  from the scoreboard and target them by exact name.
 - **Touch screen controls:** button pages, a keyboard and a trackpad on the bottom screen,
   with the game on the top screen.
 - **Opinionated console controls:** a fixed ConsolePort controller layout, plus **A** to
   play, enter the world and log in, and the **D-pad** to pick a character.
 
-Also: optional auto-login (password encrypted on the device), an optional touch-controls
-overlay on the game screen, and Box64 0.4.5, which Warmane accepts.
+Also: an Update button next to Play when a new version is out (with what's new), optional
+auto-login (password encrypted on the device), an optional touch-controls overlay on the
+game screen, and Box64 0.4.5, which Warmane accepts.
 
 ## Default controller layout
 

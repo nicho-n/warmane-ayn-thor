@@ -105,8 +105,9 @@ class TargetFramesView(
             Mode.NEARBY -> nearbyRows().let { r -> listOf(List(r) { -1 }, List(r) { -1 }) }
             Mode.FRIENDLY -> listOf((50..54).toList(), (55..59).toList())
             Mode.ARENA -> listOf((0..4).toList(), (30..34).toList())
-            Mode.BG_TEAM -> listOf((10..14).toList(), (15..19).toList())
-            Mode.BATTLEGROUND -> listOf((10..19).toList(), (20..29).toList())
+            // 15 per side: team 10-19 then 90-94, enemies 20-29 then 95-99.
+            Mode.BG_TEAM -> listOf((10..14) + (90..92), (15..19) + (93..94))
+            Mode.BATTLEGROUND -> listOf((10..19) + (90..94), (20..29) + (95..99))
         }
         val key = if (mode == Mode.NEARBY) "NEARBY-${nearbyRows()}" else mode.name
         if (builtFor != key) {
@@ -239,7 +240,8 @@ class TargetFramesView(
     /** Target without clicking: the slot's hidden key, else type /target. */
     private fun targetByKey(slot: Int, u: LinkUnit) {
         val key = targetKey(slot)
-        if (key != null && !u.noKey) SlashTyper.chord(xServer, key.first, key.second, onSuspendModifiers, onResumeModifiers)
+        if (slot in 90..99 && !u.noKey) SlashTyper.chord(xServer, DIGIT_KEYS[slot - 90], true, onSuspendModifiers, onResumeModifiers, ctrl = false)
+        else if (key != null && !u.noKey) SlashTyper.chord(xServer, key.first, key.second, onSuspendModifiers, onResumeModifiers)
         else commandFor(slot, u)?.let { SlashTyper.type(xServer, it, onSuspendModifiers, onResumeModifiers) }
     }
 
@@ -266,7 +268,7 @@ class TargetFramesView(
         in 1..4 -> "/target party$slot"
         in 30..34 -> "/target arena${slot - 29}"
         // Names are typed letter by letter; names with letters the pad can't type are skipped.
-        else -> unit.name.takeIf { n -> n.isNotEmpty() && n.all { SlashTyper.canType(it) } }?.let { "/target $it" }
+        else -> unit.name.takeIf { n -> n.isNotEmpty() && n.all { SlashTyper.canType(it) } }?.let { "/targetexact $it" }
     }
 
     private inner class UnitBox(var slot: Int) : View(context) {
@@ -392,6 +394,8 @@ class TargetFramesView(
         private const val PLATE_HOVER_MS = 80L
         /** Nearby slots (50-59 are the NPC tab, which repeats friendly NPCs). */
         private val NEARBY_SLOTS = (40..49) + (60..89)
+        /** Alt+Shift+1-0: battleground slots 90-99 (see KEYS in WoWMobileLink.lua). */
+        private val DIGIT_KEYS = "1234567890".map { XKeycode.valueOf("KEY_" + it) }
         /** Keys for slots 70-79 (with Ctrl+Alt) and 80-89 (Ctrl+Alt+Shift); see KEYS in WoWMobileLink.lua. */
         private val PUNCT_KEYS = listOf(
             XKeycode.KEY_MINUS, XKeycode.KEY_EQUAL, XKeycode.KEY_BRACKET_LEFT, XKeycode.KEY_BRACKET_RIGHT, XKeycode.KEY_SEMICOLON,

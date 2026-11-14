@@ -7,6 +7,7 @@
     <string name="wow_container_settings">Container Settings</string>
     <string name="wow_advanced">Advanced (Winlator UI)</string>
     <string name="wow_select_game_folder">Select game folder</string>
+    <string name="wow_change_game_folder">Change game folder</string>
     <string name="wow_use_this_folder">Use this folder</string>
     <string name="wow_no_folder_selected">No game folder selected</string>
     <string name="wow_status_select_folder">Select the folder that contains Wow.exe to get started.</string>
@@ -25,7 +26,7 @@
     <string name="wow_view_distance">View distance</string>
     <string name="wow_detected_locale">Detected client locale</string>
     <string name="wow_settings_note">Change these only while the game is closed — WoW overwrites its config on exit.</string>
-    <string name="wow_donate">Donate</string>
+    <string name="wow_donate">Donate\u0020\u0020☕</string>
     <string name="wow_controls">Controls</string>
     <string name="wow_touch_controls">Show touch controls on the game screen</string>
     <string name="wow_auto_login">Auto-login</string>
@@ -378,6 +379,15 @@
     <string name="low_latency">Low Latency</string>
     <string name="power_saving">Power Saving</string>
     <string name="player">Player</string>
+    <string name="wow_update">Update to v%1$s</string>
+    <string name="wow_update_downloading">Downloading update… %1$d%%</string>
+    <string name="wow_update_downloading_nosize">Downloading update…</string>
+    <string name="wow_update_failed">Download failed. Tap to try again</string>
+    <string name="wow_update_install">Install v%1$s</string>
+    <string name="wow_update_allow">Allow installing apps, then tap here again</string>
+    <string name="wow_update_title">What’s new in v%1$s</string>
+    <string name="wow_update_install_button">Install</string>
+    <string name="wow_update_no_notes">A new version is available.</string>
     <string name="gamepad">Gamepad</string>
     <string name="enable_vibration">Enable Vibration</string>
     <string name="mode">Mode</string>

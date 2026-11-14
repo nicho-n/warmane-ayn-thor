@@ -25,7 +25,8 @@
 --          enemies, 30-34 arena1-5, 40-49 nearby enemies (from on-screen nameplates: hostile
 --          and neutral NPCs and enemy players), 50-59 nearby friendly NPCs, 60-69 nearby
 --          friendlies (friendly players and/or NPCs, as the app asks for), 70-79 nearby
---          enemies 11-20, 80-89 nearby friendlies 11-20
+--          enemies 11-20, 80-89 nearby friendlies 11-20, 90-94 battleground team 11-15,
+--          95-99 battleground enemies 11-15
 --   class: 1 warrior 2 paladin 3 hunter 4 rogue 5 priest 6 death knight 7 shaman
 --          8 mage 9 warlock 10 druid (0 unknown)
 --   hp: 0-100 percent, 255 unknown.  flags: 1 dead, 2 not visible/offline, 4 your target,
@@ -526,6 +527,8 @@ do
         -- Nearby enemies 11-20 and friendlies 11-20.
         KEYS[70 + i] = "ALT-CTRL-" .. PUNCT[i + 1]
         KEYS[80 + i] = "ALT-CTRL-SHIFT-" .. PUNCT[i + 1]
+        -- Battleground team 11-15 (90-94) and enemies 11-15 (95-99).
+        KEYS[90 + i] = "ALT-SHIFT-" .. digits[i + 1]
     end
 end
 local UNIT_SLOTS = { [0] = "player", "party1", "party2", "party3", "party4" }
@@ -556,9 +559,10 @@ end
 -- Puts the records of one name group (battleground team/enemies, nearby) into slots
 -- base..base+9, keeping each name on its button while in combat.
 -- records may have gaps (nearby keeps units in fixed slots): index i goes to slot base+i-1.
-local function assign(list, base, records)
+local function assign(list, base, records, count)
+    count = count or 10
     if not next(buttons) then
-        for i = 1, 10 do
+        for i = 1, count do
             local r = records[i]
             if r then
                 r.slot, r.flags = base + i - 1, r.flags + 128
@@ -568,12 +572,12 @@ local function assign(list, base, records)
         return
     end
     if not InCombatLockdown() then
-        for i = 0, 9 do
+        for i = 0, count - 1 do
             local r = records[i + 1]
             local name = r and r.name or ""
             if slotName[base + i] ~= name then
                 slotName[base + i] = name
-                buttons[base + i]:SetAttribute("macrotext", name ~= "" and ("/target " .. name) or "")
+                buttons[base + i]:SetAttribute("macrotext", name ~= "" and ("/targetexact " .. name) or "")
             end
             if r then r.slot = base + i; list[#list + 1] = r end
         end
@@ -582,7 +586,7 @@ local function assign(list, base, records)
     -- In combat the buttons keep their names: a unit stays in its own slot when that slot's
     -- button has its name, else moves to a slot whose button does; others get flag 128.
     local used, pending = {}, {}
-    for i = 1, 10 do
+    for i = 1, count do
         local r = records[i]
         if r and slotName[base + i - 1] == r.name then
             used[i - 1], r.slot = true, base + i - 1
@@ -594,7 +598,7 @@ local function assign(list, base, records)
     local later = {}
     for _, i in ipairs(pending) do
         local r, placed = records[i], false
-        for k = 0, 9 do
+        for k = 0, count - 1 do
             if not used[k] and slotName[base + k] == r.name then
                 used[k], placed, r.slot = true, true, base + k
                 list[#list + 1] = r
@@ -607,7 +611,7 @@ local function assign(list, base, records)
         local r = records[i]
         local k = not used[i - 1] and i - 1
         if not k then
-            for j = 0, 9 do if not used[j] then k = j; break end end
+            for j = 0, count - 1 do if not used[j] then k = j; break end end
         end
         if k then
             used[k], r.slot, r.flags = true, base + k, r.flags + 128
@@ -617,39 +621,56 @@ local function assign(list, base, records)
 end
 
 local lastScoreRequest = 0
+-- Battleground players listed per side (Arathi Basin and Eye of the Storm have 15).
+local BG_MAX = 15
 local function collect()
     local _, instance = IsInInstance()
     local mode = MODE[instance or "none"] or 0
     local list = {}
     if mode == 3 then
-        -- Battleground: team from the raid (first 10), enemies from the scoreboard (first 10).
+        -- Battleground: team from the raid, enemies from the scoreboard, 15 each (slots
+        -- 10-19 then 90-94 for the team, 20-29 then 95-99 for enemies).
         local team = {}
         for i = 1, GetNumRaidMembers() do
-            if #team >= 10 then break end
+            if #team >= BG_MAX then break end
             local unit = "raid" .. i
             if UnitExists(unit) then team[#team + 1] = unitRecord(0, unit) end
         end
-        assign(list, 10, team)
+        local t1, t2 = {}, {}
+        for i = 1, 10 do t1[i] = team[i] end
+        for i = 1, 5 do t2[i] = team[i + 10] end
+        assign(list, 10, t1)
+        assign(list, 90, t2, 5)
         if GetTime() - lastScoreRequest > 5 then
             lastScoreRequest = GetTime()
             RequestBattlefieldScoreData()
         end
         local myFaction = UnitFactionGroup("player") == "Horde" and 0 or 1
-        local seen, enemies = visibleEnemies(), {}
+        -- By name, not scoreboard order (that changes with every kill), so boxes stay put.
+        local seen, enemyNames, tokens, enemies = visibleEnemies(), {}, {}, {}
         for i = 1, GetNumBattlefieldScores() do
-            if #enemies >= 10 then break end
             local name, _, _, _, _, faction, _, _, _, token = GetBattlefieldScore(i)
             if name and faction ~= myFaction then
                 name = strsplit("-", name)
-                local unit = seen[name]
-                if unit then
-                    enemies[#enemies + 1] = unitRecord(0, unit, name)
-                else
-                    enemies[#enemies + 1] = { slot = 0, class = CLASS[token or ""] or 0, hp = 255, flags = 2 + 8 + 64, name = name }
-                end
+                enemyNames[#enemyNames + 1] = name
+                tokens[name] = token
             end
         end
-        assign(list, 20, enemies)
+        table.sort(enemyNames)
+        for _, name in ipairs(enemyNames) do
+            if #enemies >= BG_MAX then break end
+            local unit = seen[name]
+            if unit then
+                enemies[#enemies + 1] = unitRecord(0, unit, name)
+            else
+                enemies[#enemies + 1] = { slot = 0, class = CLASS[tokens[name] or ""] or 0, hp = 255, flags = 2 + 8 + 64, name = name }
+            end
+        end
+        local e1, e2 = {}, {}
+        for i = 1, 10 do e1[i] = enemies[i] end
+        for i = 1, 5 do e2[i] = enemies[i + 10] end
+        assign(list, 20, e1)
+        assign(list, 95, e2, 5)
     else
         list[#list + 1] = unitRecord(0, "player")
         for i = 1, 4 do

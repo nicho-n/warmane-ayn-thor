@@ -338,6 +338,27 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
     }
 
+    /** wow-mobile: the bottom-screen pad goes away with the game (Home, app switch) and comes back with it. */
+    private boolean padHiddenForBackground;
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (bottomScreenPad != null && !isChangingConfigurations()) {
+            bottomScreenPad.stop();
+            padHiddenForBackground = true;
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (bottomScreenPad != null && padHiddenForBackground) {
+            padHiddenForBackground = false;
+            bottomScreenPad.start();
+        }
+    }
+
     @Override
     protected void onDestroy() {
         if (bottomScreenPad != null) bottomScreenPad.stop();
