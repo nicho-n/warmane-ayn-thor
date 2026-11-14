@@ -729,8 +729,31 @@ end
 -- Alt+Ctrl+F7 / Alt+Ctrl+F8 (the app's R3 camera rotate mode): saves the camera view when
 -- it starts and puts it back when it ends, so the camera returns behind the character.
 local CAMERA_VIEW = 5
+-- While the mode is on, WoW's camera following (which swings the camera back behind a
+-- character moving forward) is off; the player's setting is kept in ThorControlsDB until the
+-- mode ends (Alt+Ctrl+F8, or Alt+Ctrl+F11 when the app ends it without moving the camera), and
+-- put back at login if the game stopped while it was on.
+local FOLLOW_CVARS = { "cameraSmoothStyle", "cameraSmoothTrackingStyle" }
+local function followOff()
+    if not db then return end
+    if not db.cameraFollow then
+        db.cameraFollow = {}
+        for _, name in ipairs(FOLLOW_CVARS) do db.cameraFollow[name] = GetCVar(name) end
+    end
+    for _, name in ipairs(FOLLOW_CVARS) do SetCVar(name, "0") end
+end
+local function followBack()
+    if not db or not db.cameraFollow then return end
+    for name, value in pairs(db.cameraFollow) do SetCVar(name, value) end
+    db.cameraFollow = nil
+end
 local orbitStart = CreateFrame("Button", "ThorControlsCameraSave", UIParent)
-orbitStart:SetScript("OnClick", function() SaveView(CAMERA_VIEW) end)
+orbitStart:SetScript("OnClick", function()
+    SaveView(CAMERA_VIEW)
+    followOff()
+end)
+local orbitQuit = CreateFrame("Button", "ThorControlsCameraFollow", UIParent)
+orbitQuit:SetScript("OnClick", followBack)
 -- Put back at once, without WoW's camera move animation (cameraViewBlendStyle 2 = instant).
 -- While the character moves, one SetView can land only part of the way, so it is repeated
 -- every frame for a moment; then the player's own blend setting goes back.
@@ -752,7 +775,10 @@ local function restoreView()
         end
     end)
 end
-orbitEnd:SetScript("OnClick", function() restoreView() end)
+orbitEnd:SetScript("OnClick", function()
+    followBack()
+    restoreView()
+end)
 -- Alt+Ctrl+F9 / Alt+Ctrl+F10 (the app's turn around, left stick pulled fully back): the app
 -- turns the character with a fixed mouse movement, measured with this sensitivity. It is
 -- used just for the turn; then the player's own comes back.
@@ -784,6 +810,7 @@ local function bindBattlegroundsKey()
     SetOverrideBindingClick(friendPlates, false, "ALT-CTRL-F6", "ThorControlsFriendlyNameplates")
     SetOverrideBindingClick(orbitStart, false, "ALT-CTRL-F7", "ThorControlsCameraSave")
     SetOverrideBindingClick(orbitEnd, false, "ALT-CTRL-F8", "ThorControlsCameraRestore")
+    SetOverrideBindingClick(orbitQuit, false, "ALT-CTRL-F11", "ThorControlsCameraFollow")
     SetOverrideBindingClick(turnStart, false, "ALT-CTRL-F9", "ThorControlsTurnStart")
     SetOverrideBindingClick(turnEnd, false, "ALT-CTRL-F10", "ThorControlsTurnEnd")
 end
@@ -849,6 +876,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
             hookWatchBars()
         end
     elseif event == "PLAYER_LOGIN" then
+        followBack()
         applyNameplates()
         if freshSetup then
             freshSetup = nil

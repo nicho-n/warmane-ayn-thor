@@ -247,8 +247,7 @@ public class ConsolePortController {
         applyStickY(ly);
         setArrow(1, lx, 1);
         setArrow(3, lx, -1);
-        // Only straight sideways: a diagonal doesn't count as strafing here.
-        updateAutoOrbit((arrows[1] || arrows[3]) && !arrows[0] && !arrows[2]);
+        updateAutoOrbit();
 
         // D-pad reported as hat axes -> F1..F4
         float hx = event.getAxisValue(MotionEvent.AXIS_HAT_X);
@@ -288,14 +287,39 @@ public class ConsolePortController {
     private boolean turnedAround, turnReady;
     private float lastLy, lastLx;
 
+    /** The stick has to stay all the way down this long, so sweeping it round the edge doesn't turn. */
+    private static final int TURN_AROUND_HOLD_MS = 120;
+    private boolean turnAroundPending;
+    private final Runnable turnAroundCheck = () -> {
+        turnAroundPending = false;
+        if (!turnedAround && wantsTurnAround(lastLy)) startTurnAround();
+    };
+
+    /** Only with the stick nearly all the way straight down, so a diagonal doesn't turn around. */
+    private boolean wantsTurnAround(float ly) {
+        return ly > TURN_AROUND && Math.abs(lastLx) <= TURN_AROUND_SIDEWAYS && cameraKey && !inPreGame()
+            && app.gamenative.externaldisplay.PadSettings.INSTANCE.boolValue(app.gamenative.externaldisplay.PadSettings.TURN_AROUND);
+    }
+
     private void updateTurnAround(float ly) {
         if (turnedAround) {
             if (ly <= STICK_RELEASE) turnedAround = false;
             return;
         }
-        // Only with the stick nearly all the way straight down, so a diagonal doesn't turn around.
-        if (ly <= TURN_AROUND || Math.abs(lastLx) > TURN_AROUND_SIDEWAYS || !cameraKey || inPreGame()
-            || !app.gamenative.externaldisplay.PadSettings.INSTANCE.boolValue(app.gamenative.externaldisplay.PadSettings.TURN_AROUND)) return;
+        if (!wantsTurnAround(ly)) {
+            if (turnAroundPending) {
+                handler.removeCallbacks(turnAroundCheck);
+                turnAroundPending = false;
+            }
+            return;
+        }
+        if (!turnAroundPending) {
+            turnAroundPending = true;
+            handler.postDelayed(turnAroundCheck, TURN_AROUND_HOLD_MS);
+        }
+    }
+
+    private void startTurnAround() {
         turnedAround = true;
         turnReady = false;
         tapCtrlAlt(XKeycode.KEY_F9);
@@ -343,16 +367,66 @@ public class ConsolePortController {
     private boolean autoOrbit, autoOrbitOff, aligning;
     private static final int FACE_NUDGE = 10;
 
-    private void updateAutoOrbit(boolean strafing) {
-        if (!strafing) {
-            autoOrbitOff = false;
-            if (autoOrbit) {
-                autoOrbit = false;
-                endAutoOrbit();
+    /**
+     * With the stick let go, the mode only ends after this, so flicking the stick from one side
+     * to the other keeps it on. Straight forward ends it once held for AUTO_ORBIT_FORWARD_MS, so
+     * sweeping the stick over the top doesn't.
+     */
+    private static final int AUTO_ORBIT_GRACE_MS = 350;
+    private static final int AUTO_ORBIT_FORWARD_MS = 150;
+    private boolean autoOrbitEnding;
+    private boolean autoOrbitForwardPending;
+    private final Runnable autoOrbitEnd = () -> {
+        autoOrbitEnding = false;
+        if (!autoOrbit) return;
+        autoOrbit = false;
+        endAutoOrbit();
+    };
+    private final Runnable autoOrbitForward = () -> {
+        autoOrbitForwardPending = false;
+        if (autoOrbit && arrows[0] && !arrows[1] && !arrows[3]) {
+            handler.removeCallbacks(autoOrbitEnd);
+            autoOrbitEnding = false;
+            autoOrbitEnd.run();
+        }
+    };
+
+    /**
+     * Starts with a strafe straight sideways (not a diagonal). Then, as in camera rotate mode,
+     * diagonals, backwards and sideways keep it on; straight forward ends it, turning the
+     * character to the camera's direction, and so does letting the stick go for a moment.
+     */
+    private void updateAutoOrbit() {
+        boolean sideways = arrows[1] || arrows[3];
+        boolean centred = !sideways && !arrows[0] && !arrows[2];
+        if (!sideways) autoOrbitOff = false;
+        if (autoOrbit) {
+            boolean forward = arrows[0] && !sideways;
+            if (forward != autoOrbitForwardPending) {
+                if (forward) handler.postDelayed(autoOrbitForward, AUTO_ORBIT_FORWARD_MS);
+                else handler.removeCallbacks(autoOrbitForward);
+                autoOrbitForwardPending = forward;
+            }
+            if (forward) {
+                if (autoOrbitEnding) {
+                    handler.removeCallbacks(autoOrbitEnd);
+                    autoOrbitEnding = false;
+                }
+            }
+            else if (centred) {
+                if (!autoOrbitEnding) {
+                    autoOrbitEnding = true;
+                    handler.postDelayed(autoOrbitEnd, AUTO_ORBIT_GRACE_MS);
+                }
+            }
+            else if (autoOrbitEnding) {
+                handler.removeCallbacks(autoOrbitEnd);
+                autoOrbitEnding = false;
             }
             return;
         }
-        if (autoOrbit || autoOrbitOff || orbitMode || pointerMode || aligning || inPreGame()
+        if (!sideways || arrows[0] || arrows[2]) return;
+        if (autoOrbitOff || orbitMode || pointerMode || aligning || inPreGame()
             || !app.gamenative.externaldisplay.PadSettings.INSTANCE.boolValue(app.gamenative.externaldisplay.PadSettings.STRAFE_FREE_CAMERA)) return;
         autoOrbit = true;
         setOrbitMode(true);
@@ -366,7 +440,9 @@ public class ConsolePortController {
         }
         releaseCamera();
         orbitMode = false;
-        faceCamera();
+        // Camera following back on (ThorControls), without moving the camera.
+        tapCtrlAlt(XKeycode.KEY_F11);
+        handler.postDelayed(this::faceCamera, 60);
     }
 
     /** Turns the character to the camera's direction: mouselook with a small nudge (see above). */
