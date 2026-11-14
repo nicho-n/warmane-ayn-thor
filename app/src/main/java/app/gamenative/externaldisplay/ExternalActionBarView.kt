@@ -515,8 +515,9 @@ class ExternalActionBarView(
                     page("Walk / run", XKeycode.KEY_KP_DIVIDE),
                     page("Sit / stand", XKeycode.KEY_X),
                     page("Hide UI", XKeycode.KEY_Z, XKeycode.KEY_ALT_L),
-                    page("Enemy nameplates", XKeycode.KEY_V),
-                    page("Friendly nameplates", XKeycode.KEY_V, XKeycode.KEY_SHIFT_L),
+                    // ThorControls toggles each kind on its own (WoW's V / Shift+V get out of step).
+                    page("Enemy nameplates", XKeycode.KEY_F5, XKeycode.KEY_CTRL_L, XKeycode.KEY_ALT_L),
+                    page("Friendly nameplates", XKeycode.KEY_F6, XKeycode.KEY_CTRL_L, XKeycode.KEY_ALT_L),
                     page("Chat page up", XKeycode.KEY_PRIOR),
                     page("Chat page down", XKeycode.KEY_NEXT),
                     page("Screenshot", XKeycode.KEY_PRTSCN),

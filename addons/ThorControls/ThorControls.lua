@@ -55,7 +55,7 @@ local FRESH_SETTINGS = {
 local freshSetup
 
 StaticPopupDialogs["THORCONTROLS_RELOAD"] = {
-    text = "Thor Controls: one-time controller setup for this account. Reload the UI to finish.",
+    text = "Thor Controls: one-time controller setup for this account. Reload the UI to finish.\n\nNameplates must be on for bottom screen targeting to work.",
     button1 = RELOADUI or "Reload UI",
     OnAccept = function() ReloadUI() end,
     timeout = 0,
@@ -174,6 +174,21 @@ local function applyCalibration()
         end
     end
     return changed
+end
+
+-- Nameplates: the app's touch targeting finds units through their nameplates, so friendly
+-- and enemy nameplates are switched on once per character (WoW keeps them per character;
+-- turning them off later with the V keys sticks).
+local function applyNameplates()
+    if not db then return end
+    db.nameplatesOn = db.nameplatesOn or {}
+    local who = (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
+    if db.nameplatesOn[who] then return end
+    if InCombatLockdown() then pending.nameplates = true; return end
+    pending.nameplates = nil
+    SetCVar("nameplateShowEnemies", "1")
+    SetCVar("nameplateShowFriends", "1")
+    db.nameplatesOn[who] = true
 end
 
 local function reloadConsolePortBindings()
@@ -700,10 +715,25 @@ local leaveButton = CreateFrame("Button", "ThorControlsLeaveParty", UIParent)
 leaveButton:SetScript("OnClick", function()
     if GetNumPartyMembers() > 0 or GetNumRaidMembers() > 0 then LeaveParty() end
 end)
+-- Alt+Ctrl+F5 / Alt+Ctrl+F6 (the app's Enemy / Friendly nameplates buttons): each turns
+-- one kind of nameplate on or off. WoW's own V / Shift+V keep their on/off state apart
+-- from the settings, so they get out of step with each other.
+local function toggleNameplates(cvar)
+    SetCVar(cvar, GetCVar(cvar) == "1" and "0" or "1")
+    -- Keep WoW's own V / Shift+V toggles in step.
+    NAMEPLATES_ON = GetCVar("nameplateShowEnemies") == "1"
+    FRIENDNAMEPLATES_ON = GetCVar("nameplateShowFriends") == "1"
+end
+local enemyPlates = CreateFrame("Button", "ThorControlsEnemyNameplates", UIParent)
+enemyPlates:SetScript("OnClick", function() toggleNameplates("nameplateShowEnemies") end)
+local friendPlates = CreateFrame("Button", "ThorControlsFriendlyNameplates", UIParent)
+friendPlates:SetScript("OnClick", function() toggleNameplates("nameplateShowFriends") end)
 local function bindBattlegroundsKey()
     if InCombatLockdown() then return end
     SetOverrideBindingClick(bgButton, false, "ALT-CTRL-SHIFT-V", "ThorControlsBattlegrounds")
     SetOverrideBindingClick(leaveButton, false, "ALT-SHIFT-L", "ThorControlsLeaveParty")
+    SetOverrideBindingClick(enemyPlates, false, "ALT-CTRL-F5", "ThorControlsEnemyNameplates")
+    SetOverrideBindingClick(friendPlates, false, "ALT-CTRL-F6", "ThorControlsFriendlyNameplates")
 end
 
 local function noop() end
@@ -767,6 +797,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
             hookWatchBars()
         end
     elseif event == "PLAYER_LOGIN" then
+        applyNameplates()
         if freshSetup then
             freshSetup = nil
             if ConsolePortSplashFrame then ConsolePortSplashFrame:Hide() end
@@ -797,6 +828,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
         if arg1 == "player" then applyPetBar() end
     elseif event == "PLAYER_REGEN_ENABLED" then
         if pending.cpBindings then reloadConsolePortBindings() end
+        if pending.nameplates then applyNameplates() end
         if pending.camera then applyCamera() end
         if pending.pet then applyPetBar() end
         if pending.blizz then hideBlizzardBars() end
