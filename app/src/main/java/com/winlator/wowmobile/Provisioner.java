@@ -338,15 +338,15 @@ public class Provisioner {
     }
 
     /**
-     * The keystroke → ConsolePort button map. The touch overlay emits these keys,
-     * ConsolePortLK turns them into virtual gamepad buttons.
+     * The keystroke → ConsolePort button map. The controller code (ConsolePortController)
+     * sends these keys; ConsolePortLK turns them into gamepad buttons. Same map as the
+     * ThorControls addon's calibration, which re-applies it every login.
      */
     private static final String[][] KEY_BINDINGS = {
-        {"Y", "CP_R_UP"}, {"B", "CP_R_RIGHT"}, {"N", "CP_R_DOWN"}, {"H", "CP_R_LEFT"},
-        {"I", "CP_L_UP"}, {"L", "CP_L_RIGHT"}, {"K", "CP_L_DOWN"}, {"J", "CP_L_LEFT"},
-        {"Q", "CP_T1"}, {"E", "CP_T2"},
-        {"G", "CP_X_LEFT"}, {"V", "CP_X_RIGHT"},
-        {"F", "INTERACTTARGET"}
+        {"F9", "CP_R_UP"}, {"F10", "CP_R_RIGHT"}, {"F11", "CP_R_DOWN"}, {"F12", "CP_R_LEFT"},
+        {"F1", "CP_L_UP"}, {"F2", "CP_L_RIGHT"}, {"F3", "CP_L_DOWN"}, {"F4", "CP_L_LEFT"},
+        {"F7", "CP_T1"}, {"F8", "CP_T2"},
+        {"F5", "CP_X_LEFT"}, {"F6", "CP_X_RIGHT"},
     };
 
     /**
@@ -409,19 +409,20 @@ public class Provisioner {
             "\t[\"autoLootDefault\"] = true,\n" +
             "\t[\"stickRadialType\"] = 2,\n" +
             "\t[\"stickRadialLocal\"] = true,\n" +
+            "\t[\"disableStickMouse\"] = true,\n" +
             "\t[\"calibration\"] = {\n" +
-            "\t\t[\"CP_R_UP\"] = \"Y\",\n" +
-            "\t\t[\"CP_R_RIGHT\"] = \"B\",\n" +
-            "\t\t[\"CP_R_DOWN\"] = \"N\",\n" +
-            "\t\t[\"CP_R_LEFT\"] = \"H\",\n" +
-            "\t\t[\"CP_L_UP\"] = \"I\",\n" +
-            "\t\t[\"CP_L_RIGHT\"] = \"L\",\n" +
-            "\t\t[\"CP_L_DOWN\"] = \"K\",\n" +
-            "\t\t[\"CP_L_LEFT\"] = \"J\",\n" +
-            "\t\t[\"CP_T1\"] = \"Q\",\n" +
-            "\t\t[\"CP_T2\"] = \"E\",\n" +
-            "\t\t[\"CP_X_LEFT\"] = \"G\",\n" +
-            "\t\t[\"CP_X_RIGHT\"] = \"V\",\n" +
+            "\t\t[\"CP_R_UP\"] = \"F9\",\n" +
+            "\t\t[\"CP_R_RIGHT\"] = \"F10\",\n" +
+            "\t\t[\"CP_R_DOWN\"] = \"F11\",\n" +
+            "\t\t[\"CP_R_LEFT\"] = \"F12\",\n" +
+            "\t\t[\"CP_L_UP\"] = \"F1\",\n" +
+            "\t\t[\"CP_L_RIGHT\"] = \"F2\",\n" +
+            "\t\t[\"CP_L_DOWN\"] = \"F3\",\n" +
+            "\t\t[\"CP_L_LEFT\"] = \"F4\",\n" +
+            "\t\t[\"CP_T1\"] = \"F7\",\n" +
+            "\t\t[\"CP_T2\"] = \"F8\",\n" +
+            "\t\t[\"CP_X_LEFT\"] = \"F5\",\n" +
+            "\t\t[\"CP_X_RIGHT\"] = \"F6\",\n" +
             "\t},\n" +
             "}\n";
         FileUtils.writeString(file, seed);

@@ -1,4 +1,0 @@
-<Bindings>
-<Binding name="THORFIXES_CAMERALOOK" header="THORFIXES" runOnUp="true">if keystate == "down" then MouselookStart() else MouselookStop() end</Binding>
-<Binding name="THORFIXES_WOWMOBILE" hidden="true">ThorFixes_WowMobileSignal()</Binding>
-</Bindings>

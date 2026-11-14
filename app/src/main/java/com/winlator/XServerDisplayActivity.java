@@ -650,6 +650,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         glueScreens = new app.gamenative.externaldisplay.GlueScreenWatcher(linkReader);
         glueScreens.start();
         if (consolePortController != null) consolePortController.setGlueScreens(glueScreens);
+        // With the ThorControls addon the camera uses its own key (see ConsolePortController.setCameraKey).
+        String gamePath = preferences.getString(com.winlator.wowmobile.WowMobileActivity.PREF_GAME_FOLDER, null);
+        if (consolePortController != null && gamePath != null) {
+            File addOns = new com.winlator.wowmobile.GameFolder(gamePath).getAddOnsDir();
+            consolePortController.setCameraKey(new File(addOns, "ThorControls/ThorControls.toc").isFile());
+        }
         if (com.winlator.wowmobile.LoginSecret.isEnabled(this)) {
             String password = com.winlator.wowmobile.LoginSecret.load(this);
             if (password != null && !password.isEmpty()) {

@@ -1,0 +1,3 @@
+<Bindings>
+<Binding name="THORCONTROLS_CAMERALOOK" header="THORCONTROLS" runOnUp="true">if keystate == "down" then MouselookStart() else MouselookStop() end</Binding>
+</Bindings>

@@ -15,23 +15,35 @@ import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 /**
- * Installs this app's own addons (bundled from the repo's addons/ folder into
- * assets/wowmobile/addons) into the game's Interface/AddOns. Only the bundled addons'
- * own folders are ever replaced; before installing, the whole AddOns folder is zipped
- * into the game folder as a backup.
+ * Installs the addons this app needs into the game's Interface/AddOns:
+ *  - ThorControls and WoWMobileLink (this app's own; also updated on Play when the app
+ *    carries a newer version),
+ *  - NotPlater, if it isn't there,
+ *  - ConsolePortLK (stock, bundled), if ConsolePort is missing or is WoW Imito's modified
+ *    one. In that case WoW Imito's own addons are moved to Interface/AddOns-disabled.
+ * Before installing, the whole AddOns folder is zipped into the game folder. Only the
+ * folders of the addons being installed (or moved) are touched.
  */
 public class AddonInstaller {
     private static final String ASSET_DIR = "wowmobile/addons";
-    /** Needed for the bottom screen's Target page. */
+    private static final String CONSOLEPORT_ZIP = "wowmobile/ConsolePortLK.zip";
+    private static final String THOR_CONTROLS = "ThorControls";
     private static final String LINK = "WoWMobileLink";
-    /** Only useful (and only loads) alongside WoW Imito's addons. */
-    private static final String THOR_FIXES = "ThorFixes";
+    private static final String NOTPLATER = "NotPlater-3.3.5";
+    /** This app's own addons: always installed, updated when newer. */
+    private static final String[] OWN = {THOR_CONTROLS, LINK};
+    /** WoW Imito's addons, which only work with its modified ConsolePort. */
+    private static final String[] WOW_IMITO = {"WoWImito", "ImitoTouchUI", "ThorFixes"};
+    public static final String DISABLED_DIR = "AddOns-disabled";
 
     private final Context context;
     private final GameFolder gameFolder;
@@ -41,17 +53,42 @@ public class AddonInstaller {
         this.gameFolder = gameFolder;
     }
 
-    /** The bundled addons that apply to this game folder. */
+    private File addOnsDir() {
+        return gameFolder.getAddOnsDir();
+    }
+
+    /** ConsolePort is missing, or is WoW Imito's modified one (which needs WoWImito). */
+    public boolean needsConsolePort() {
+        File toc = new File(addOnsDir(), "ConsolePort/ConsolePort.toc");
+        if (!toc.isFile()) return true;
+        return new File(addOnsDir(), "ConsolePort/ImitoIntegration.lua").isFile() ||
+               FileUtils.readString(toc).contains("RequiredDeps: WoWImito");
+    }
+
+    public boolean needsNotPlater() {
+        return !new File(addOnsDir(), NOTPLATER + "/" + NOTPLATER + ".toc").isFile();
+    }
+
+    /** WoW Imito's addons that will be moved out (only when its ConsolePort is replaced). */
+    public List<String> wowImitoAddonsToDisable() {
+        List<String> names = new ArrayList<>();
+        if (!needsConsolePort()) return names;
+        for (String name : WOW_IMITO) if (new File(addOnsDir(), name).isDirectory()) names.add(name);
+        return names;
+    }
+
+    /** Names of the addons [install] will put in, for the confirmation popup. */
     public List<String> plan() {
         List<String> names = new ArrayList<>();
-        names.add(LINK);
-        if (new Provisioner(context, gameFolder).isWowImitoFolder()) names.add(THOR_FIXES);
+        if (needsConsolePort()) names.add("ConsolePortLK");
+        for (String name : OWN) names.add(name);
+        if (needsNotPlater()) names.add("NotPlater");
         return names;
     }
 
     /** Zips Interface/AddOns into the game folder; returns the zip, or null if there was nothing to back up. */
     public File backup() throws IOException {
-        File addOnsDir = gameFolder.getAddOnsDir();
+        File addOnsDir = addOnsDir();
         if (!addOnsDir.isDirectory()) return null;
         String stamp = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date());
         File zip = new File(gameFolder.root, "AddOns-backup-" + stamp + ".zip");
@@ -86,18 +123,26 @@ public class AddonInstaller {
         }
     }
 
-    /** Installs every addon in [plan], replacing only those addons' own folders. */
+    /** Installs everything in [plan]. Call [backup] first. */
     public void install() throws IOException {
-        for (String name : plan()) installAddon(name);
+        File addOnsDir = addOnsDir();
+        if (!addOnsDir.isDirectory() && !addOnsDir.mkdirs()) throw new IOException("can't create " + addOnsDir);
+
+        if (needsConsolePort()) {
+            disableWowImitoAddons();
+            installConsolePort();
+        }
+        for (String name : OWN) installAddon(name);
+        if (needsNotPlater()) installAddon(NOTPLATER);
     }
 
     /**
-     * Updates already-installed bundled addons when the app carries a newer version
-     * (compared by "## Version" in the .toc). Addons that aren't installed are left alone.
+     * Updates this app's own addons when the app carries a newer version (compared by
+     * "## Version" in the .toc). Addons that aren't installed are left alone.
      */
     public void updateInstalled() {
-        for (String name : plan()) {
-            File toc = new File(new File(gameFolder.getAddOnsDir(), name), name + ".toc");
+        for (String name : OWN) {
+            File toc = new File(new File(addOnsDir(), name), name + ".toc");
             if (!toc.isFile()) continue;
             String installed = tocVersion(FileUtils.readString(toc));
             String bundled = tocVersion(readAsset(ASSET_DIR + "/" + name + "/" + name + ".toc"));
@@ -110,8 +155,57 @@ public class AddonInstaller {
         }
     }
 
+    /** Moves WoW Imito's addons to Interface/AddOns-disabled (WoW doesn't load them from there). */
+    private void disableWowImitoAddons() throws IOException {
+        File disabledDir = new File(addOnsDir().getParentFile(), DISABLED_DIR);
+        for (String name : wowImitoAddonsToDisable()) {
+            if (!disabledDir.isDirectory() && !disabledDir.mkdirs()) throw new IOException("can't create " + disabledDir);
+            File target = new File(disabledDir, name);
+            if (target.exists()) FileUtils.delete(target);
+            if (!new File(addOnsDir(), name).renameTo(target)) throw new IOException("can't move " + name);
+        }
+    }
+
+    /** Replaces every ConsolePort* folder the bundled ConsolePortLK contains, then extracts it. */
+    private void installConsolePort() throws IOException {
+        File addOnsDir = addOnsDir();
+        Set<String> folders = new LinkedHashSet<>();
+        try (ZipInputStream zis = new ZipInputStream(context.getAssets().open(CONSOLEPORT_ZIP))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                String top = entry.getName().split("/")[0];
+                if (!top.isEmpty()) folders.add(top);
+            }
+        }
+        for (String folder : folders) {
+            File dir = new File(addOnsDir, folder);
+            if (dir.exists()) FileUtils.delete(dir);
+        }
+        try (ZipInputStream zis = new ZipInputStream(context.getAssets().open(CONSOLEPORT_ZIP))) {
+            byte[] buffer = new byte[64 * 1024];
+            ZipEntry entry;
+            String base = addOnsDir.getCanonicalPath();
+            while ((entry = zis.getNextEntry()) != null) {
+                File target = new File(addOnsDir, entry.getName());
+                if (!target.getCanonicalPath().startsWith(base)) continue;
+                if (entry.isDirectory()) {
+                    target.mkdirs();
+                    continue;
+                }
+                File parent = target.getParentFile();
+                if (parent != null) parent.mkdirs();
+                try (OutputStream os = new BufferedOutputStream(new FileOutputStream(target))) {
+                    int count;
+                    while ((count = zis.read(buffer)) != -1) os.write(buffer, 0, count);
+                }
+            }
+        }
+        // Unlike the provisioner's fresh install, bindings stay per character here: that's
+        // how WoW Imito's ConsolePort saved them, so existing characters keep their bindings.
+    }
+
     private void installAddon(String name) throws IOException {
-        File addOnsDir = gameFolder.getAddOnsDir();
+        File addOnsDir = addOnsDir();
         if (!addOnsDir.isDirectory() && !addOnsDir.mkdirs()) throw new IOException("can't create " + addOnsDir);
         File target = new File(addOnsDir, name);
         if (target.exists()) FileUtils.delete(target);

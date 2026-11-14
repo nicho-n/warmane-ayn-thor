@@ -14,15 +14,16 @@ import com.winlator.xserver.XKeycode;
 import com.winlator.xserver.XServer;
 
 /**
- * Turns a physical controller into the keys WoW Imito's ConsolePort expects
- * (see docs/wowimito-interface.md, section 3):
+ * Turns a physical controller into the keys ConsolePort is calibrated to (by the
+ * ThorControls addon and Provisioner; WoW Imito's ConsolePort uses the same map):
  *
  *   D-pad up/right/down/left -> F1/F2/F3/F4    Select -> F5   Start -> F6
  *   L1 -> F7   R1 -> F8   Y -> F9   B -> F10   A -> F11   X -> F12
  *   L2 -> held left Shift   R2 -> held left Ctrl
  *   Left stick -> held arrow keys (move / strafe)
- *   Right stick -> camera (right mouse held + mouse motion); R3 toggles pointer
- *   mode, where the right stick moves the cursor and L3 left-clicks.
+ *   Right stick -> camera (NUMPADDIVIDE or right mouse held + mouse motion, see
+ *   setCameraKey); R3 toggles pointer mode, where the right stick moves the cursor
+ *   and L3 left-clicks.
  *
  * Touch never touches the keyboard state here, so a tap cannot release held
  * movement or modifier keys. Touch and the camera share the one mouse pointer,
@@ -309,7 +310,9 @@ public class ConsolePortController {
             if (active && !touchBlocksCamera()) {
                 float speed = pointerMode ? POINTER_SPEED : CAMERA_SPEED;
                 if (!pointerMode && !cameraHeld) {
-                    xServer.injectPointerButtonPress(Pointer.Button.BUTTON_RIGHT);
+                    cameraKeyHeld = cameraKey;
+                    if (cameraKeyHeld) xServer.injectKeyPress(XKeycode.KEY_KP_DIVIDE);
+                    else xServer.injectPointerButtonPress(Pointer.Button.BUTTON_RIGHT);
                     cameraHeld = true;
                 }
                 accumX += curve(rightX) * speed;
@@ -347,6 +350,20 @@ public class ConsolePortController {
     private void releaseCamera() {
         if (!cameraHeld) return;
         cameraHeld = false;
-        xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_RIGHT);
+        if (cameraKeyHeld) xServer.injectKeyRelease(XKeycode.KEY_KP_DIVIDE);
+        else xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_RIGHT);
+    }
+
+    /**
+     * Camera key: with the ThorControls addon, the right stick holds NUMPADDIVIDE (bound
+     * there to look-around without clicking), so right-click stays a normal click.
+     * Without it, NUMPADDIVIDE is WoW's walk/run toggle, so hold the right mouse button.
+     */
+    private boolean cameraKey;
+    private boolean cameraKeyHeld;
+
+    public void setCameraKey(boolean useKey) {
+        if (cameraHeld) releaseCamera();
+        cameraKey = useKey;
     }
 }

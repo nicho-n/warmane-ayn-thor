@@ -210,17 +210,14 @@ public class WowMobileActivity extends AppCompatActivity {
      */
     private void offerAddons(GameFolder gameFolder) {
         AddonInstaller installer = new AddonInstaller(this, gameFolder);
-        ArrayList<String> names = new ArrayList<>(installer.plan());
-        Provisioner provisioner = new Provisioner(this, gameFolder);
-        // Installed by the provisioner on first Play (upstream behaviour); listed so the user knows.
-        if (!provisioner.isWowImitoFolder() && provisioner.getStatus() == Provisioner.Status.PENDING &&
-            !new File(gameFolder.getAddOnsDir(), "ConsolePort/ConsolePort.toc").isFile()) names.add("ConsolePortLK");
-
         StringBuilder list = new StringBuilder();
-        for (String name : names) list.append("\n  •  ").append(name);
+        for (String name : installer.plan()) list.append("\n  •  ").append(name);
+        String message = getString(R.string.wow_addons_message, list.toString());
+        java.util.List<String> moved = installer.wowImitoAddonsToDisable();
+        if (!moved.isEmpty()) message += "\n\n" + getString(R.string.wow_addons_imito, android.text.TextUtils.join(", ", moved), AddonInstaller.DISABLED_DIR);
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle(R.string.wow_addons_title)
-            .setMessage(getString(R.string.wow_addons_message, list.toString()))
+            .setMessage(message)
             .setPositiveButton(R.string.wow_addons_continue, (d, w) -> installAddons(installer))
             .setNegativeButton(R.string.cancel, null)
             .show();
