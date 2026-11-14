@@ -98,11 +98,11 @@
                     android:text="@string/wow_settings"/>
 
                 <Button
-                    android:id="@+id/BTContainerSettings"
+                    android:id="@+id/BTDonate"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/wow_container_settings"/>
+                    android:text="@string/wow_donate"/>
             </LinearLayout>
 
             <LinearLayout
@@ -120,13 +120,13 @@
                     android:text="@string/wow_advanced"/>
 
                 <Button
-                    android:id="@+id/BTDonate"
+                    android:id="@+id/BTContainerSettings"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="16dp"
                     style="?android:attr/borderlessButtonStyle"
-                    android:textColor="?attr/colorAccent"
-                    android:text="@string/wow_donate"/>
+                    android:textColor="?attr/colorSecondaryText"
+                    android:text="@string/wow_container_settings"/>
             </LinearLayout>
         </LinearLayout>
     </ScrollView>
