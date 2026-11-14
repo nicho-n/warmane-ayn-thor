@@ -101,7 +101,7 @@ This project stands on the work of others:
 - **[AYN Thor WoW Launcher](https://github.com/wyattabuntjer/AYN-Thor-WoW-Launcher)**
   by wyattabuntjer: the bottom-screen pad (button pages, keyboard, trackpad) is ported
   from it.
-- **WoW Imito**: the Android WoW app that showed how good WoW can be on a handheld and
+- **[WoW Imito](https://github.com/MrAnonymz/WoW-Imito)** by MrAnonymz: the Android WoW app that showed how good WoW can be on a handheld and
   inspired this project. This app works alongside its addons but does not include them.
 - **[Winlator](https://github.com/brunodev85/winlator)** by brunodev85: the
   Windows-on-Android engine (Wine + Box64) everything runs on.

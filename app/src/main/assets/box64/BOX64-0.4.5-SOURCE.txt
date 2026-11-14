@@ -4,6 +4,6 @@ Built with aarch64-linux-gnu-gcc 11.4 (Ubuntu 22.04):
   cmake .. -DARM64=ON -DBAD_SIGNAL=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 then stripped. Packed as ./usr/local/bin/box64, like box64-0.4.0.tzst.
 Linked with the app's loader paths (as the 0.4.0 package has):
-  -Wl,--dynamic-linker=/data/data/it.wowmobile/files/rootfs/lib/ld-linux-aarch64.so.1
-  -Wl,-rpath,/data/data/it.wowmobile/files/rootfs/lib -Wl,--enable-new-dtags
+  -Wl,--dynamic-linker=/data/data/warmane.thor/files/rootfs/lib/ld-linux-aarch64.so.1
+  -Wl,-rpath,/data/data/warmane.thor/files/rootfs/lib -Wl,--enable-new-dtags
 If the application id changes, rebuild with the new path.
