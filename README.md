@@ -119,7 +119,8 @@ build is unsigned.
   engine.
 - [Box64](https://github.com/ptitSeb/box64) by ptitSeb and contributors.
 - [ConsolePortLK](https://github.com/leoaviana/ConsolePortLK) by leoaviana: bundled
-  unmodified.
+  unmodified (1.5.0-rc2); on install, one line of `ConsolePort.toc` is changed so
+  bindings are saved per account.
 - [NotPlater](https://github.com/RichSteini/NotPlater) by RichSteini: bundled (MIT).
 
 ## License
