@@ -93,6 +93,21 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
+                android:text="@string/wow_controls"
+                android:textStyle="bold"
+                android:textColor="?attr/colorPrimaryText"/>
+
+            <CheckBox
+                android:id="@+id/CBTouchControls"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/wow_touch_controls"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
                 android:text="@string/wow_auto_login"
                 android:textStyle="bold"
                 android:textColor="?attr/colorPrimaryText"/>

@@ -3,6 +3,8 @@ package com.winlator.wowmobile;
 import android.content.Context;
 import android.content.Intent;
 
+import androidx.preference.PreferenceManager;
+
 import com.winlator.XServerDisplayActivity;
 import com.winlator.container.Container;
 import com.winlator.container.ContainerManager;
@@ -28,6 +30,8 @@ public class WowContainerHelper {
     public static final String CONTAINER_NAME = "WoW";
     public static final String SHORTCUT_NAME = "World of Warcraft";
     public static final String CONTROLS_PROFILE_NAME = "WoW ConsolePortLK";
+    /** Show upstream's touch-controls overlay on the game screen (WoW Settings). */
+    public static final String PREF_TOUCH_CONTROLS = "wow_touch_controls";
     public static final String GAME_DRIVE_LETTER = "F";
     public static final String DEFAULT_SCREEN_SIZE = "960x432";
 
@@ -90,13 +94,11 @@ public class WowContainerHelper {
     }
 
     /**
-     * WoW Imito folders keep their own Config.wtf (windowed, e.g. 1920x1080), which
-     * the provisioner no longer rewrites to 960x432. Give the Windows desktop the
-     * same size so the game window fills it instead of hanging off a small desktop.
+     * The Windows desktop is the size of the game's own resolution (Config.wtf
+     * gxResolution, set in WoW Settings), so the windowed-maximized game fills it.
      */
     private String getScreenSize(GameFolder gameFolder) {
         Provisioner provisioner = new Provisioner(context, gameFolder);
-        if (!provisioner.isWowImitoFolder()) return DEFAULT_SCREEN_SIZE;
         String resolution = provisioner.getConfigValue("gxResolution");
         if (resolution != null && resolution.matches("\\d{3,4}x\\d{3,4}")) {
             // CROP_BOTTOM extra rows below the visible picture, for the WoWMobileLink data row.
@@ -118,9 +120,9 @@ public class WowContainerHelper {
     }
 
     /**
-     * Box64 settings WoW Imito ships (assets/box64/env_vars.json defaults in
-     * pub.wowimito 1.4.1), applied to WoW Imito folders. Container env vars are
-     * applied after the Box64 preset, so these take precedence.
+     * Box64 settings as WoW Imito ships them (assets/box64/env_vars.json defaults in
+     * pub.wowimito 1.4.1). Container env vars are applied after the Box64 preset, so
+     * these take precedence.
      */
     private static final String[][] IMITO_BOX64 = {
         {"BOX64_DYNAREC_SAFEFLAGS", "2"}, {"BOX64_DYNAREC_FASTNAN", "1"}, {"BOX64_DYNAREC_FASTROUND", "1"},
@@ -130,7 +132,6 @@ public class WowContainerHelper {
     };
 
     private String withImitoBox64(String current, GameFolder gameFolder) {
-        if (!new Provisioner(context, gameFolder).isWowImitoFolder()) return current;
         com.winlator.core.EnvVars envVars = new com.winlator.core.EnvVars(current);
         for (String[] item : IMITO_BOX64) envVars.put(item[0], item[1]);
         return envVars.toString();
@@ -175,11 +176,10 @@ public class WowContainerHelper {
             "StartupWMClass=wow.exe\n" +
             "\n[Extra Data]\n";
 
-        // The bundled touch profile sends letter keys for the original
-        // ConsolePortLK. WoW Imito's ConsolePort uses F1-F12 from the
-        // controller instead, so those buttons would misfire: use plain
-        // touchpad taps there.
-        int profileId = new Provisioner(context, gameFolder).isWowImitoFolder() ? 0 : getControlsProfileId();
+        // On-screen touch controls (upstream WoW Mobile's overlay on the game screen)
+        // are optional, set in WoW Settings; off by default, as the Thor has a
+        // controller and the bottom-screen pad.
+        int profileId = PreferenceManager.getDefaultSharedPreferences(context).getBoolean(PREF_TOUCH_CONTROLS, false) ? getControlsProfileId() : 0;
         if (profileId > 0) content += "controlsProfile="+profileId+"\n";
 
         FileUtils.writeString(shortcutFile, content);

@@ -34,6 +34,7 @@ public class WowSettingsActivity extends AppCompatActivity {
     private Spinner sResolution;
     private Spinner sFarclip;
     private ArrayList<String> realmlistItems;
+    private CheckBox cbTouchControls;
     private CheckBox cbAutoLogin;
     private EditText etPassword;
 
@@ -64,6 +65,9 @@ public class WowSettingsActivity extends AppCompatActivity {
 
         loadRealmlists();
         loadGraphics();
+
+        cbTouchControls = findViewById(R.id.CBTouchControls);
+        cbTouchControls.setChecked(PreferenceManager.getDefaultSharedPreferences(this).getBoolean(WowContainerHelper.PREF_TOUCH_CONTROLS, false));
 
         cbAutoLogin = findViewById(R.id.CBAutoLogin);
         etPassword = findViewById(R.id.ETPassword);
@@ -138,6 +142,9 @@ public class WowSettingsActivity extends AppCompatActivity {
             }
         }
         else host = realmlistItems.get(sRealmlist.getSelectedItemPosition());
+
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+            .putBoolean(WowContainerHelper.PREF_TOUCH_CONTROLS, cbTouchControls.isChecked()).apply();
 
         String password = etPassword.getText().toString();
         if (cbAutoLogin.isChecked()) {

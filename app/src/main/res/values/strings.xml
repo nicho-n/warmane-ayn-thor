@@ -25,6 +25,8 @@
     <string name="wow_view_distance">View distance</string>
     <string name="wow_detected_locale">Detected client locale</string>
     <string name="wow_settings_note">Change these only while the game is closed — WoW overwrites its config on exit.</string>
+    <string name="wow_controls">Controls</string>
+    <string name="wow_touch_controls">Show touch controls on the game screen</string>
     <string name="wow_auto_login">Auto-login</string>
     <string name="wow_auto_login_enable">Type my password on the login screen</string>
     <string name="wow_password_hint">Password (leave empty to keep the saved one)</string>
