@@ -462,6 +462,24 @@ local function fixBarCooldowns()
     end
 end
 
+-- 14. Battlegrounds key for the app's Interface page: Ctrl+Alt+Shift+V opens the PvP
+-- window on its Battlegrounds tab (H opens it on the PvP tab), or closes it.
+local bgButton = CreateFrame("Button", "ThorControlsBattlegrounds", UIParent)
+bgButton:SetScript("OnClick", function()
+    local frame, tab = _G.PVPParentFrame, _G.PVPParentFrameTab2
+    if not frame then TogglePVPFrame(); return end
+    if frame:IsShown() and PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(frame) == 2 then
+        HideUIPanel(frame)
+        return
+    end
+    if not frame:IsShown() then TogglePVPFrame() end
+    if tab and frame:IsShown() then tab:Click() end
+end)
+local function bindBattlegroundsKey()
+    if InCombatLockdown() then return end
+    SetOverrideBindingClick(bgButton, false, "ALT-CTRL-SHIFT-V", "ThorControlsBattlegrounds")
+end
+
 local function noop() end
 local function hideUtilityModel()
     local anim = _G.ConsolePortUtilityAnimation
@@ -518,6 +536,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
         applyPetBar()
         applyTrail()
         hideUtilityModel()
+        bindBattlegroundsKey()
         if db.spikes then setSpikes(true) end
         fixBarCooldowns()
     elseif event == "PLAYER_ENTERING_WORLD" then

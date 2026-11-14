@@ -101,13 +101,14 @@ class TargetFramesView(
         val columns: List<List<Int>> = when (mode) {
             // Party left, nearby enemies right (grows past 5 rows when needed, see below).
             Mode.DUNGEON, Mode.AUTO -> listOf((0..4).toList(), (40..49).toList())
-            Mode.NEARBY -> listOf((40..44).toList(), (45..49).toList())
+            // Placeholder slots: placeNearby() puts units in the boxes.
+            Mode.NEARBY -> nearbyRows().let { r -> listOf(List(r) { -1 }, List(r) { -1 }) }
             Mode.FRIENDLY -> listOf((50..54).toList(), (55..59).toList())
             Mode.ARENA -> listOf((0..4).toList(), (30..34).toList())
             Mode.BG_TEAM -> listOf((10..14).toList(), (15..19).toList())
             Mode.BATTLEGROUND -> listOf((10..19).toList(), (20..29).toList())
         }
-        val key = mode.name
+        val key = if (mode == Mode.NEARBY) "NEARBY-${nearbyRows()}" else mode.name
         if (builtFor != key) {
             builtFor = key
             body.removeAllViews()
@@ -128,7 +129,8 @@ class TargetFramesView(
         boxes.forEach { it.bind(LinkState.unit(it.slot)) }
         // A column longer than 5 shows 5 boxes, and more (smaller) ones only down to the last
         // occupied slot. Units keep their slot, so boxes above don't move, they just shrink.
-        columnBoxes.filter { it.size > 5 }.forEach { list ->
+        // (Not Nearby: its grid size comes from the settings, and units fill from the corners.)
+        if (mode != Mode.NEARBY) columnBoxes.filter { it.size > 5 }.forEach { list ->
             val last = list.indexOfLast { LinkState.unit(it.slot) != null }
             val show = maxOf(5, last + 1)
             list.forEachIndexed { i, b ->
@@ -139,51 +141,106 @@ class TargetFramesView(
     }
 
     /**
-     * Nearby: 10 boxes, two columns of five. Enemies and NPCs (slots 40-49) fill from the top
-     * left going down, friendly players (60-69) from the bottom right going up; each unit keeps its box, since the
-     * addon keeps it in its slot. When both want a box, the one nearer its own start wins.
+     * Nearby: 10 boxes, two columns of five. Enemies (slots 40-49: hostile and neutral) fill
+     * from one corner and friendlies (60-69) from the other: by default enemies from the
+     * bottom right going up, friendlies from the top left going down (Settings → Targeting
+     * swaps them). Each unit keeps its box, since the addon keeps it in its slot. When both
+     * want a box, the one nearer its own start wins. Units past the set maximum aren't shown.
      */
     private fun placeNearby() {
+        // Unit k (0-19) of a side: enemies in slots 40-49 then 70-79, friendlies 60-69 then 80-89.
+        fun enemySlot(k: Int) = if (k < 10) 40 + k else 60 + k
+        fun friendSlot(k: Int) = if (k < 10) 60 + k else 70 + k
+        fun allowed(slotOf: (Int) -> Int, max: Int): Set<Int> =
+            (0..19).filter { LinkState.unit(slotOf(it)) != null }.take(max).toSet()
+        val enemies = allowed(::enemySlot, PadSettings.int(PadSettings.NEARBY_MAX_ENEMIES))
+        val friends = allowed(::friendSlot, PadSettings.int(PadSettings.NEARBY_MAX_FRIENDS))
+        val enemiesTopLeft = PadSettings.int(PadSettings.NEARBY_ENEMIES_TOP_LEFT) == 1
+        val rows = columnBoxes.firstOrNull()?.size ?: return
         columnBoxes.forEachIndexed { col, list ->
             list.forEachIndexed { row, box ->
-                val npc = col * 5 + row
-                val player = (1 - col) * 5 + (4 - row)
-                val hasNpc = LinkState.unit(40 + npc) != null
-                val hasPlayer = LinkState.unit(60 + player) != null
+                val topLeft = col * rows + row
+                val bottomRight = 2 * rows - 1 - topLeft
+                val e = if (enemiesTopLeft) topLeft else bottomRight
+                val f = if (enemiesTopLeft) bottomRight else topLeft
+                val hasEnemy = e in enemies
+                val hasFriend = f in friends
                 box.slot = when {
-                    hasNpc && hasPlayer -> if (npc <= player) 40 + npc else 60 + player
-                    hasPlayer -> 60 + player
-                    else -> 40 + npc
+                    hasEnemy && hasFriend -> if (e <= f) enemySlot(e) else friendSlot(f)
+                    hasFriend -> friendSlot(f)
+                    hasEnemy -> enemySlot(e)
+                    else -> -1
                 }
             }
         }
+    }
+
+    /** Nearby rows per column: enough for the larger of the two maximums, 5 to 10. */
+    private fun nearbyRows(): Int {
+        val most = maxOf(PadSettings.int(PadSettings.NEARBY_MAX_ENEMIES), PadSettings.int(PadSettings.NEARBY_MAX_FRIENDS))
+        return ((most + 1) / 2).coerceIn(5, 10)
     }
 
     /**
      * Nearby units: click the unit's nameplate, which targets exactly that unit even when
      * several share a name. The camera pauses for the click, like for any touch.
      */
-    private fun clickPlate(u: LinkUnit) {
+    private fun clickPlate(slot: Int, u: LinkUnit) {
         val w = xServer.screenInfo.width.toInt()
         val h = xServer.screenInfo.height.toInt()
         PadBridge.trackpadTouch(true)
         xServer.injectPointerMove(u.plateX * w / 255, u.plateY * h / 255)
-        // Let WoW draw a few frames with the cursor over the plate before clicking: a click in the
-        // same frame as the move hits whatever was under the old position (clears the target).
-        postDelayed({
-            xServer.injectPointerButtonPress(com.winlator.xserver.Pointer.Button.BUTTON_LEFT)
-            postDelayed({
-                xServer.injectPointerButtonRelease(com.winlator.xserver.Pointer.Button.BUTTON_LEFT)
-                // WoW reads the cursor position once per frame: move it only after a few frames,
-                // or the release is seen at the new position and the click misses the plate.
-                if (PadSettings.bool(PadSettings.TARGET_CURSOR_CENTER)) {
+        // Let WoW draw a few frames with the cursor over the plate before clicking (a click in
+        // the same frame as the move hits whatever was under the old position), and wait for
+        // two packets drawn since the move: they say whether the cursor is over a UI frame
+        // (quest tracker, chat...) that would take the click instead of the plate.
+        val since = LinkState.packets
+        val movedAt = System.currentTimeMillis()
+        fun finish() {
+            if (PadSettings.bool(PadSettings.TARGET_CURSOR_CENTER)) {
+                postDelayed({
+                    xServer.injectPointerMove(w / 2, h / 2)
+                    PadBridge.trackpadTouch(false)
+                }, PLATE_HOVER_MS)
+            } else PadBridge.trackpadTouch(false)
+        }
+        val decide = object : Runnable {
+            override fun run() {
+                val fresh = LinkState.packets - since >= 2
+                if (!fresh && System.currentTimeMillis() - movedAt < PLATE_WAIT_MAX_MS) { postDelayed(this, 20); return }
+                if (fresh && LinkState.cursorOverUi) {
+                    finish()
+                    targetByKey(slot, u)
+                    return
+                }
+                // Re-aim at the newest position (the plate moves while you walk), then click.
+                val latest = LinkState.unit(slot)?.takeIf { it.name == u.name && it.plateX > 0 && it.plateY > 0 }
+                val aimDelay = if (latest != null && (latest.plateX != u.plateX || latest.plateY != u.plateY)) {
+                    xServer.injectPointerMove(latest.plateX * w / 255, latest.plateY * h / 255)
+                    50L
+                } else 0L
+                postDelayed({
+                    xServer.injectPointerButtonPress(com.winlator.xserver.Pointer.Button.BUTTON_LEFT)
                     postDelayed({
-                        xServer.injectPointerMove(w / 2, h / 2)
-                        PadBridge.trackpadTouch(false)
-                    }, PLATE_HOVER_MS)
-                } else PadBridge.trackpadTouch(false)
-            }, 40)
-        }, PLATE_HOVER_MS)
+                        xServer.injectPointerButtonRelease(com.winlator.xserver.Pointer.Button.BUTTON_LEFT)
+                        // WoW reads the cursor position once per frame: move it back only after a
+                        // few frames, or the release is seen at the new position and misses the plate.
+                        finish()
+                    }, 40)
+                }, aimDelay)
+            }
+        }
+        postDelayed(decide, PLATE_HOVER_MS)
+    }
+
+    private fun sharedName(slot: Int, u: LinkUnit): Boolean =
+        u.mustClick || NEARBY_SLOTS.any { it != slot && LinkState.unit(it)?.name == u.name }
+
+    /** Target without clicking: the slot's hidden key, else type /target. */
+    private fun targetByKey(slot: Int, u: LinkUnit) {
+        val key = targetKey(slot)
+        if (key != null && !u.noKey) SlashTyper.chord(xServer, key.first, key.second, onSuspendModifiers, onResumeModifiers)
+        else commandFor(slot, u)?.let { SlashTyper.type(xServer, it, onSuspendModifiers, onResumeModifiers) }
     }
 
     /** The WoWMobileLink addon's key for a slot (see KEYS in WoWMobileLink.lua): key and whether Shift is part of it. */
@@ -198,6 +255,8 @@ class TargetFramesView(
             in 40..49 -> k(digits[slot - 40]) to false
             in 50..59 -> k("QWERTYUIOP"[slot - 50]) to false
             in 60..69 -> k("ASDFGHJZXC"[slot - 60]) to false
+            in 70..79 -> PUNCT_KEYS[slot - 70] to false
+            in 80..89 -> PUNCT_KEYS[slot - 80] to true
             else -> null
         }
     }
@@ -300,10 +359,10 @@ class TargetFramesView(
                 MotionEvent.ACTION_UP -> {
                     alpha = 1f
                     val u = unit ?: return true
-                    val key = targetKey(slot)
-                    if (u.plateX > 0 && u.plateY > 0) clickPlate(u)
-                    else if (key != null && !u.noKey) SlashTyper.chord(xServer, key.first, key.second, onSuspendModifiers, onResumeModifiers)
-                    else commandFor(slot, u)?.let { SlashTyper.type(xServer, it, onSuspendModifiers, onResumeModifiers) }
+                    // Click the plate only when its name is shared by another nearby unit: the
+                    // key targets by name, which works while moving, where a plate's position
+                    // is already out of date by the time the click lands.
+                    if (u.plateX > 0 && u.plateY > 0 && sharedName(slot, u)) clickPlate(slot, u) else targetByKey(slot, u)
                 }
                 MotionEvent.ACTION_CANCEL -> alpha = 1f
             }
@@ -331,6 +390,15 @@ class TargetFramesView(
     companion object {
         private const val KEY_MODE = "target_mode"
         private const val PLATE_HOVER_MS = 80L
+        /** Nearby slots (50-59 are the NPC tab, which repeats friendly NPCs). */
+        private val NEARBY_SLOTS = (40..49) + (60..89)
+        /** Keys for slots 70-79 (with Ctrl+Alt) and 80-89 (Ctrl+Alt+Shift); see KEYS in WoWMobileLink.lua. */
+        private val PUNCT_KEYS = listOf(
+            XKeycode.KEY_MINUS, XKeycode.KEY_EQUAL, XKeycode.KEY_BRACKET_LEFT, XKeycode.KEY_BRACKET_RIGHT, XKeycode.KEY_SEMICOLON,
+            XKeycode.KEY_APOSTROPHE, XKeycode.KEY_COMMA, XKeycode.KEY_PERIOD, XKeycode.KEY_SLASH, XKeycode.KEY_GRAVE,
+        )
+        /** Longest wait for the addon to say what's under the cursor; then click anyway. */
+        private const val PLATE_WAIT_MAX_MS = 400L
 
         private val HOSTILE = Color.rgb(204, 38, 38)
         private val NEUTRAL = Color.rgb(230, 204, 26)

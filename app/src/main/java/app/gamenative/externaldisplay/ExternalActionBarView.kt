@@ -469,7 +469,7 @@ class ExternalActionBarView(
 
         private class Page(val id: String, val title: String, val slots: List<Slot>)
 
-        // WoW's default bindings. A page holds at most 12 buttons.
+        // WoW's default bindings. Over 8 buttons, a page splits into two columns.
         private val PAGES = listOf(
             Page(
                 "interface", "Interface",
@@ -483,6 +483,8 @@ class ExternalActionBarView(
                     page("Guild", XKeycode.KEY_J),
                     page("Group Finder", XKeycode.KEY_I),
                     page("Achievements", XKeycode.KEY_Y),
+                    // ThorControls' key for the PvP window's Battlegrounds tab.
+                    page("Battlegrounds", XKeycode.KEY_V, XKeycode.KEY_CTRL_L, XKeycode.KEY_ALT_L, XKeycode.KEY_SHIFT_L),
                     page("Professions", XKeycode.KEY_K),
                     page("Bags", XKeycode.KEY_B),
                     // Escape opens the game menu ("System") when nothing else is open.
@@ -550,8 +552,8 @@ class ExternalActionBarView(
             command("Invite", "/invite"),
             command("Duel", "/duel"),
             command("Wave", "/wave"),
-            command("Silly", "/silly"),
-            command("Salute", "/salute"),
+            command("Point", "/point"),
+            command("Sorry", "/sorry"),
         )
     }
 }

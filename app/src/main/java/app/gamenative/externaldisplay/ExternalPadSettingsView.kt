@@ -49,6 +49,16 @@ class ExternalPadSettingsView(
         content.removeAllViews()
         scrollTo(0, 0)
 
+        section("Targeting", collapsible = true) {
+            addView(note("The Target page's Nearby list: enemies (hostile and neutral) fill it from one corner, friendlies from the other."))
+            addView(cycleRow("Enemies fill from", PadSettings.NEARBY_ENEMIES_TOP_LEFT, listOf("Bottom right, going up", "Top left, going down")))
+            addView(sliderRow("Most enemies shown", PadSettings.NEARBY_MAX_ENEMIES, 1, 20) { "$it" })
+            addView(sliderRow("Most friendlies shown", PadSettings.NEARBY_MAX_FRIENDS, 1, 20) { "$it" })
+            addView(note("Up to 10 the list has 10 boxes; above that it gets more rows (up to 20 boxes), and the boxes get smaller."))
+            addView(toggleRow(listOf("Nearby shows friendly NPCs" to PadSettings.NEARBY_FRIENDLY_NPC)))
+            addView(toggleRow(listOf("Nearby shows friendly players" to PadSettings.NEARBY_FRIENDLY_PLAYER)))
+            addView(toggleRow(listOf("Cursor back to screen centre after a target tap" to PadSettings.TARGET_CURSOR_CENTER)))
+        }
         section("Pad layout", collapsible = true) {
             addView(cycleRow("Tab bar", PadSettings.TAB_POS, listOf("Top", "Bottom")))
             addView(toggleRow(listOf("Swap sides (pages on the right)" to PadSettings.SWAP_SIDES)))
@@ -62,12 +72,6 @@ class ExternalPadSettingsView(
             val panelList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
             addView(panelList)
             fillPanelOrder(panelList)
-        }
-        section("Targeting", collapsible = true) {
-            addView(note("What the Target page's Nearby list shows besides enemies. Enemies and NPCs fill it from the top left going down, friendly players from the bottom right going up."))
-            addView(toggleRow(listOf("Nearby shows friendly NPCs" to PadSettings.NEARBY_FRIENDLY_NPC)))
-            addView(toggleRow(listOf("Nearby shows friendly players" to PadSettings.NEARBY_FRIENDLY_PLAYER)))
-            addView(toggleRow(listOf("Cursor back to screen centre after a target tap" to PadSettings.TARGET_CURSOR_CENTER)))
         }
         section("Number block", collapsible = true) {
             addView(toggleRow(listOf("Show emotes" to PadSettings.SEC_NUMBERS)))
@@ -170,6 +174,9 @@ class ExternalPadSettingsView(
                 addView(note("Other"))
                 addView(toggleRow(listOf("Show message when the mode changes" to PadSettings.MODE_MESSAGE)))
             }
+        }
+        section("Camera", collapsible = true) {
+            addView(sliderRow("Right-stick camera speed", PadSettings.CAMERA_SPEED, 25, 300) { "$it%" })
         }
         section("Triggers (L2 / R2)", collapsible = true) {
             addView(toggleRow(listOf("L2 / R2 act as modifier keys" to PadSettings.TRIGGER_MODS)))
@@ -625,18 +632,27 @@ class ExternalPadSettingsView(
         )
     }
 
+    /**
+     * A slider with its value on the right. Tap the value to type an exact number on a small
+     * number pad (the bottom screen has no system keyboard); OK sets it, kept within min-max.
+     */
     private fun sliderRow(title: String, key: String, min: Int, max: Int, format: (Int) -> String): LinearLayout =
         LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, dp(8), 0)
-            addView(label(title))
+            orientation = LinearLayout.VERTICAL
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(8), 0, dp(8), 0)
+            }
+            addView(row)
+            row.addView(label(title))
             val valueText = TextView(context).apply {
                 setTextColor(theme.text)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                 typeface = theme.typeface
-                gravity = Gravity.END
-                layoutParams = LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.WRAP_CONTENT)
+                gravity = Gravity.CENTER
+                paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+                layoutParams = LinearLayout.LayoutParams(dp(64), dp(40))
             }
             val current = PadSettings.int(key).coerceIn(min, max)
             valueText.text = format(current)
@@ -656,8 +672,44 @@ class ExternalPadSettingsView(
                     override fun onStopTrackingTouch(bar: SeekBar?) {}
                 })
             }
-            addView(bar)
-            addView(valueText)
+            row.addView(bar)
+            row.addView(valueText)
+
+            // Number pad, shown while typing a value.
+            var typed = ""
+            val pad = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+                setPadding(dp(8), 0, dp(8), dp(4))
+            }
+            val entry = label("", widthDp = 200)
+            fun showTyped() { entry.text = "Type a value ($min-$max): " + typed.ifEmpty { "_" } }
+            fun close() {
+                pad.visibility = View.GONE
+                valueText.text = format(min + bar.progress)
+            }
+            fun digit(d: String) = button(d) { if (typed.length < 5) { typed += d; showTyped() } }
+            pad.addView(entry)
+            pad.addView(rowOf(*"12345".map { digit(it.toString()) }.toTypedArray()))
+            pad.addView(rowOf(*"67890".map { digit(it.toString()) }.toTypedArray()))
+            pad.addView(rowOf(
+                button("Delete") { typed = typed.dropLast(1); showTyped() },
+                button("Cancel") { close() },
+                button("OK", active = true) {
+                    typed.toIntOrNull()?.let { v ->
+                        val value = v.coerceIn(min, max)
+                        PadSettings.set(key, value)
+                        bar.progress = value - min
+                    }
+                    close()
+                },
+            ))
+            addView(pad)
+            valueText.setOnClickListener {
+                PadSettings.haptic(it)
+                if (pad.visibility == View.VISIBLE) close()
+                else { typed = ""; showTyped(); pad.visibility = View.VISIBLE }
+            }
         }
 
     /** Picks the profile this game loads at launch (None keeps the pad as it is). */

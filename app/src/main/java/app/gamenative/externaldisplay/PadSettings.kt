@@ -74,6 +74,13 @@ object PadSettings {
     /** 0 = tab bar at the top, 1 = at the bottom. */
     const val TAB_POS = "tab_pos"
     /** Target page: whether Nearby also lists friendly NPCs (off) and friendly players (on). */
+    /** Right-stick camera turn speed, percent of the original. */
+    const val CAMERA_SPEED = "camera_speed"
+    /** Nearby: where enemies fill from, 0 bottom right (friendlies top left), 1 top left. */
+    const val NEARBY_ENEMIES_TOP_LEFT = "nearby_enemies_top_left"
+    /** Nearby: most enemies / friendlies shown (1-10). */
+    const val NEARBY_MAX_ENEMIES = "nearby_max_enemies"
+    const val NEARBY_MAX_FRIENDS = "nearby_max_friends"
     const val NEARBY_FRIENDLY_NPC = "nearby_friendly_npc"
     const val NEARBY_FRIENDLY_PLAYER = "nearby_friendly_player"
     /** After a Target page tap clicks a nameplate, put the cursor back in the middle of the screen. */
@@ -141,6 +148,10 @@ object PadSettings {
         MOD_CTRL to true,
         MOD_ALT to true,
         SEC_NUMBERS to true,
+        CAMERA_SPEED to 100,
+        NEARBY_ENEMIES_TOP_LEFT to 0,
+        NEARBY_MAX_ENEMIES to 10,
+        NEARBY_MAX_FRIENDS to 10,
         NEARBY_FRIENDLY_NPC to false,
         NEARBY_FRIENDLY_PLAYER to true,
         TARGET_CURSOR_CENTER to true,
@@ -305,6 +316,9 @@ object PadSettings {
         val def = DEFAULTS[key] as? Boolean ?: false
         return prefs?.getBoolean(key, def) ?: def
     }
+
+    /** Right-stick camera speed as a factor (1 = original); for Java, where int() can't be called. */
+    fun cameraSpeedFactor(): Float = int(CAMERA_SPEED) / 100f
 
     fun int(key: String): Int {
         val def = DEFAULTS[key] as? Int ?: 0

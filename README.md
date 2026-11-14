@@ -23,10 +23,12 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 ## Features
 
 - **Touch targeting:** a page on the bottom screen lists nearby units; tap one to target it.
-  Enemies and NPCs fill it from the top left, friendly players from the bottom right.
-  Players show in their class colour (red border for enemies, green for friends); NPCs
-  show their nameplate colour, so NotPlater's threat colours carry over. Settings →
-  Targeting chooses whether friendly NPCs and players are listed.
+  Enemies fill it from the bottom right, friendlies from the top left (Settings →
+  Targeting can swap them, set how many of each are shown, up to 20, and whether friendly
+  NPCs and players are listed). Players show in their class colour (red border for
+  enemies, green for friends); NPCs show their nameplate colour, so NotPlater's threat
+  colours carry over. Earthbind Totem is listed too. Units with a unique name are
+  targeted by name, which works while moving.
 - **Touch screen controls:** button pages, a keyboard and a trackpad on the bottom screen,
   with the game on the top screen.
 - **Opinionated console controls:** a fixed ConsolePort controller layout, plus **A** to

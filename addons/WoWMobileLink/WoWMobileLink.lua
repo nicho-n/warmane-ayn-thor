@@ -14,13 +14,18 @@
 --     records: slot class hp flags x y num nameLen name...
 --       x, y: where the unit's nameplate is on screen, 1-255 left/top to right/bottom (0 = none);
 --       the app clicks there to target exactly that unit (several mobs can share a name)
---       num: 1-255 for nearby units (also shown on their plates; 0 for party/arena/BG slots)
+--       num: 1-127 for nearby units (also shown on their plates; 0 for party/arena/BG slots),
+--       +128 when a tap must click the plate rather than target by name (name shared with
+--       another plate, or with your target when the target isn't this plate)
 --     CRC-16/CCITT (init 0xFFFF, poly 0x1021) over everything before it, high byte first.
---   mode: 0 world, 1 dungeon, 2 raid, 3 battleground, 4 arena
+--   mode: 0 world, 1 dungeon, 2 raid, 3 battleground, 4 arena; +128 when the cursor is
+--         over a UI frame rather than the game world (the app then targets by key
+--         instead of clicking a nameplate that's under, say, the quest tracker)
 --   slots: 0 player, 1-4 party1-4, 10-19 battleground team, 20-29 battleground
---          enemies, 30-34 arena1-5, 40-49 nearby units (from on-screen nameplates: hostile
---          and neutral NPCs and enemy players, plus friendly NPCs when the app asks for
---          them), 50-59 nearby friendly NPCs, 60-69 nearby friendly players (when asked for)
+--          enemies, 30-34 arena1-5, 40-49 nearby enemies (from on-screen nameplates: hostile
+--          and neutral NPCs and enemy players), 50-59 nearby friendly NPCs, 60-69 nearby
+--          friendlies (friendly players and/or NPCs, as the app asks for), 70-79 nearby
+--          enemies 11-20, 80-89 nearby friendlies 11-20
 --   class: 1 warrior 2 paladin 3 hunter 4 rogue 5 priest 6 death knight 7 shaman
 --          8 mage 9 warlock 10 druid (0 unknown)
 --   hp: 0-100 percent, 255 unknown.  flags: 1 dead, 2 not visible/offline, 4 your target,
@@ -376,14 +381,25 @@ local function platesShown()
     -- NPCs don't (their names are unique, or nearly).
     for _, r in ipairs(found) do
         local plain = bit.band(r.flags, 32) ~= 0 or bit.band(r.flags, 64) ~= 0
-        r.num = plain and 0 or math.min(r.n, 255)
+        r.num = plain and 0 or math.min(r.n, 127)
         showNumber(r.frame, r.nameRegion, r.num)
+    end
+    -- +128: tap must click this plate, not target by name. Its name is shared with
+    -- another plate, or with your target when that isn't this plate (say, a mob of the
+    -- same name behind you): /target Name would keep that target.
+    local count = {}
+    for _, r in ipairs(found) do count[r.name] = (count[r.name] or 0) + 1 end
+    for _, r in ipairs(found) do
+        if count[r.name] > 1 or (r.name == targetName and bit.band(r.flags, 4) == 0) then
+            r.num = r.num + 128
+        end
     end
     return found, targetName
 end
 
--- Puts one group's plates into its 10 slots (index 1-10), keeping each unit in its slot.
-local function slotGroup(g, found, targetName, targetShown)
+-- Puts one group's plates into its slots (index 1-size, default 10), keeping each unit in its slot.
+local function slotGroup(g, found, targetName, targetShown, size)
+    size = size or 10
     local plateSlot, held, lastRecord = g.plateSlot, g.held, g.lastRecord
     local now = GetTime()
     -- Plates still shown with the same name keep their slot.
@@ -438,7 +454,7 @@ local function slotGroup(g, found, targetName, targetShown)
     table.sort(new, function(a, b) return a.y < b.y end)
     for _, r in ipairs(new) do
         local slot
-        for i = 1, 10 do
+        for i = 1, size do
             if not out[i] then slot = i; break end
         end
         if not slot then break end
@@ -447,7 +463,7 @@ local function slotGroup(g, found, targetName, targetShown)
         plateSlot[r.frame] = { slot = slot, name = r.name }
     end
     -- Held slots are not shown (the box is empty), just kept free for the unit coming back.
-    for i = 1, 10 do
+    for i = 1, size do
         local r = out[i]
         if r then lastRecord[i] = { name = r.name, hp = r.hp, class = r.class, flags = r.flags, num = r.num, n = r.n }
         elseif not held[i] then lastRecord[i] = nil end
@@ -458,35 +474,43 @@ end
 local function newGroup() return { plateSlot = {}, held = {}, lastRecord = {} } end
 local npcGroup, friendlyGroup, playerGroup = newGroup(), newGroup(), newGroup()
 
+-- Totems listed in Nearby (the rest are left out: there are many, and they rarely matter).
+local LISTED_TOTEMS = { ["Earthbind Totem"] = true }
+
 -- What the app's Nearby list includes besides enemies (set by the open key, see OPEN_KEYS).
 local showFriendlyNPCs, showFriendlyPlayers = false, true
 
--- Nearby (slots 40-49): hostile and neutral NPCs and enemy players, plus friendly NPCs if
--- asked for. Friendly NPCs (slots 50-59, the app's NPC tab). Friendly players (slots 60-69),
--- if asked for.
+-- Nearby enemies (slots 40-49): hostile and neutral NPCs and enemy players. Friendly NPCs
+-- (slots 50-59, the app's NPC tab). Nearby friendlies (slots 60-69): friendly players and/or
+-- friendly NPCs, as asked for.
 local function nearby()
     local found, targetName = platesShown()
     local npcs, friendly, players, targetShown = {}, {}, {}, false
     for _, r in ipairs(found) do
         if bit.band(r.flags, 4) ~= 0 then targetShown = true end
         local isFriend, isPlayer = bit.band(r.flags, 32) ~= 0, bit.band(r.flags, 64) ~= 0
-        if isFriend and isPlayer then
+        if not isPlayer and r.name:find("Totem") and not LISTED_TOTEMS[r.name] then
+            -- Other totems: plates only (enemy totem plates are on for Earthbind).
+        elseif isFriend and isPlayer then
             if showFriendlyPlayers then players[#players + 1] = r end
         elseif isFriend then
             friendly[#friendly + 1] = r
-            if showFriendlyNPCs then npcs[#npcs + 1] = r end
+            if showFriendlyNPCs then players[#players + 1] = r end
         else
             npcs[#npcs + 1] = r
         end
     end
-    return slotGroup(npcGroup, npcs, targetName, targetShown), slotGroup(friendlyGroup, friendly, targetName, targetShown),
-        slotGroup(playerGroup, players, targetName, targetShown)
+    return slotGroup(npcGroup, npcs, targetName, targetShown, 20), slotGroup(friendlyGroup, friendly, targetName, targetShown),
+        slotGroup(playerGroup, players, targetName, targetShown, 20)
 end
 
 ---------------------------------------------------------------------------
 -- Target buttons and keys
 ---------------------------------------------------------------------------
 local KEYS = {}
+-- Punctuation keys (WoW's names); "-" and "=" are also bound by their other names.
+local PUNCT = { "-", "=", "[", "]", ";", "'", ",", ".", "/", "`" }
+local KEY_ALIAS = { ["-"] = "MINUS", ["="] = "EQUALS" }
 do
     local digits = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }
     for i = 0, 4 do KEYS[i] = "ALT-CTRL-SHIFT-" .. digits[i + 1] end
@@ -499,6 +523,9 @@ do
         KEYS[40 + i] = "ALT-CTRL-" .. digits[i + 1]
         KEYS[50 + i] = "ALT-CTRL-" .. team[i + 1]
         KEYS[60 + i] = "ALT-CTRL-" .. enemy[i + 1]
+        -- Nearby enemies 11-20 and friendlies 11-20.
+        KEYS[70 + i] = "ALT-CTRL-" .. PUNCT[i + 1]
+        KEYS[80 + i] = "ALT-CTRL-SHIFT-" .. PUNCT[i + 1]
     end
 end
 local UNIT_SLOTS = { [0] = "player", "party1", "party2", "party3", "party4" }
@@ -519,6 +546,10 @@ local function makeButtons()
         end
         buttons[slot] = b
         SetOverrideBindingClick(keyOwner, true, key, b:GetName(), "LeftButton")
+        local last = key:match("[^-]+$") or (key:sub(-1) == "-" and "-")
+        if KEY_ALIAS[last] then
+            SetOverrideBindingClick(keyOwner, true, key:sub(1, -2) .. KEY_ALIAS[last], b:GetName(), "LeftButton")
+        end
     end
 end
 
@@ -631,9 +662,18 @@ local function collect()
         end
     end
     local npcs, friendly, players = nearby()
-    assign(list, 40, npcs)
+    local function split(records)
+        local a, b = {}, {}
+        for i = 1, 10 do a[i], b[i] = records[i], records[i + 10] end
+        return a, b
+    end
+    local e1, e2 = split(npcs)
+    local f1, f2 = split(players)
+    assign(list, 40, e1)
+    assign(list, 70, e2)
     assign(list, 50, friendly)
-    assign(list, 60, players)
+    assign(list, 60, f1)
+    assign(list, 80, f2)
     if not next(buttons) then
         for _, r in ipairs(list) do
             if UNIT_SLOTS[r.slot] and r.flags < 128 then r.flags = r.flags + 128 end
@@ -646,7 +686,9 @@ end
 local function build()
     local mode, list = collect()
     seq = (seq + 1) % 256
-    local b = { 87, 77, VERSION, seq, mode, #list, 0 }
+    local focus = GetMouseFocus()
+    local overUi = focus and focus ~= WorldFrame and focus:GetParent() ~= WorldFrame
+    local b = { 87, 77, VERSION, seq, mode + (overUi and 128 or 0), #list, 0 }
     local count = 0
     if #list > 0 then
         if cursor >= #list then cursor = 0 end
@@ -753,6 +795,14 @@ local function defaultNameplates()
     pcall(SetCVar, "ShowClassColorInNameplate", "1") -- not on every client build
 end
 
+-- Enemy totem plates, so Earthbind Totem can be listed in Nearby. Once per account.
+local function defaultTotemPlates()
+    WoWMobileLinkDB = WoWMobileLinkDB or {}
+    if WoWMobileLinkDB.totemsDefaulted then return end
+    WoWMobileLinkDB.totemsDefaulted = true
+    pcall(SetCVar, "nameplateShowEnemyTotems", "1")
+end
+
 local owner = CreateFrame("Frame")
 local function bindKeys()
     if InCombatLockdown() then owner.pending = true; return end
@@ -768,6 +818,7 @@ owner:RegisterEvent("DISPLAY_SIZE_CHANGED")
 owner:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
         defaultNameplates()
+        defaultTotemPlates()
         bindKeys()
     elseif event == "PLAYER_REGEN_ENABLED" then
         if owner.pending then bindKeys() end

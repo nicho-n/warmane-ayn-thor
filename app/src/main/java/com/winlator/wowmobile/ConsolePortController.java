@@ -314,7 +314,8 @@ public class ConsolePortController {
             else if (rightIdleSince == 0) rightIdleSince = now;
 
             if (active && !touchBlocksCamera()) {
-                float speed = pointerMode ? POINTER_SPEED : CAMERA_SPEED;
+                float speed = pointerMode ? POINTER_SPEED
+                    : CAMERA_SPEED * app.gamenative.externaldisplay.PadSettings.INSTANCE.cameraSpeedFactor();
                 if (!pointerMode && !cameraHeld) {
                     cameraKeyHeld = cameraKey;
                     // Until something has put the pointer on the game (a touch does), WoW's

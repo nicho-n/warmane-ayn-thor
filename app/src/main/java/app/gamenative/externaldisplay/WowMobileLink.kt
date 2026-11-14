@@ -14,7 +14,9 @@ import java.nio.ByteOrder
  */
 data class LinkUnit(val slot: Int, val classId: Int, val hp: Int, val flags: Int, val name: String, val seenAt: Long, val plateX: Int = 0, val plateY: Int = 0, val num: Int = 0) {
     /** Name as shown: "(2) Wild Boar" when several nearby units share it (same number as on its plate). */
-    val label get() = if (num > 0) "($num) $name" else name
+    val label get() = if (num and 127 > 0) "(${num and 127}) $name" else name
+    /** The addon says a tap must click the plate (name shared with another plate or with an off-screen target). */
+    val mustClick get() = num and 128 != 0
     val dead get() = flags and 1 != 0
     val notVisible get() = flags and 2 != 0
     val isTarget get() = flags and 4 != 0
@@ -37,6 +39,12 @@ object LinkState {
         private set
     @Volatile var lastPacketAt = 0L
         private set
+    /** Whether the cursor was over a UI frame (not the game world) in the last packet. */
+    @Volatile var cursorOverUi = false
+        private set
+    /** Packets received so far (to wait for ones drawn after a cursor move). */
+    @Volatile var packets = 0L
+        private set
     private val units = HashMap<Int, LinkUnit>()
     private val listeners = mutableListOf<() -> Unit>()
 
@@ -46,7 +54,10 @@ object LinkState {
 
     fun unit(slot: Int): LinkUnit? = units[slot]?.takeIf { System.currentTimeMillis() - it.seenAt < STALE_MS }
 
-    internal fun apply(newMode: Int, records: List<LinkUnit>) {
+    internal fun apply(rawMode: Int, records: List<LinkUnit>) {
+        val newMode = rawMode and 127
+        cursorOverUi = rawMode and 128 != 0
+        packets++
         if (newMode != mode) units.clear()
         mode = newMode
         lastPacketAt = System.currentTimeMillis()
