@@ -33,7 +33,7 @@ public class WowContainerHelper {
     /** Show upstream's touch-controls overlay on the game screen (WoW Settings). */
     public static final String PREF_TOUCH_CONTROLS = "wow_touch_controls";
     public static final String GAME_DRIVE_LETTER = "F";
-    public static final String DEFAULT_SCREEN_SIZE = "960x432";
+    public static final String DEFAULT_SCREEN_SIZE = "1920x1080";
 
     private final Context context;
     private final ContainerManager manager;

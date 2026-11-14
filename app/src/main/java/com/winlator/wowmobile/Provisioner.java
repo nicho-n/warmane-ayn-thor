@@ -26,7 +26,7 @@ import java.util.zip.ZipInputStream;
  */
 public class Provisioner {
     public static final int PROVISION_VERSION = 1;
-    public static final String DEFAULT_REALMLIST = "logon.therawow.com";
+    public static final String DEFAULT_REALMLIST = "logon.warmane.com";
     private static final String ADDONS_ASSET = "wowmobile/ConsolePortLK.zip";
 
     public enum Status {
@@ -267,7 +267,7 @@ public class Provisioner {
         return result;
     }
 
-    /** Tuned defaults for Mali-class phones; existing user keys are preserved. */
+    /** Tuned defaults (1920x1080: the AYN Thor's top screen); existing user keys are preserved. */
     private void patchConfigWtf() {
         String locale = gameFolder.getLocale();
         String[][] defaults = {
@@ -276,7 +276,7 @@ public class Provisioner {
             {"hwDetect", "0"},
             {"gxWindow", "1"},
             {"gxMaximize", "1"},
-            {"gxResolution", "960x432"},
+            {"gxResolution", "1920x1080"},
             {"gxRefresh", "60"},
             {"gxMultisampleQuality", "0.000000"},
             {"gxFixLag", "0"},

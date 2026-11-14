@@ -58,9 +58,10 @@ set of action bar buttons. Other buttons:
 2. Open the app and pick the folder that contains `Wow.exe`. The app lists the addons it
    will install and, if you continue, first zips your `Interface/AddOns` folder into the
    game folder as `AddOns-backup-<date>.zip`.
-3. In **WoW Settings**, set the realm server to `logon.warmane.com` (*Custom*). Turn on
-   auto-login if you want it.
-4. Press **Play**.
+3. Press **Play**.
+
+A new game folder is set up for Warmane (`logon.warmane.com`) at 1920x1080. Realm,
+resolution and auto-login can be changed in **WoW Settings**.
 
 ## Addons
 
