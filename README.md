@@ -64,7 +64,6 @@ set of action bar buttons. Other buttons:
 - AYN Thor. Other Android devices may run it, but the bottom-screen features need the
   Thor's second screen.
 - Your own World of Warcraft 3.3.5a (build 12340) client. No game files are included.
-- A Warmane account.
 
 ## Setup
 
