@@ -85,7 +85,7 @@ The app installs these. Only their own folders are replaced; other addons are le
 |---|---|---|
 | `ThorControls` | Always | Sets up ConsolePort for the controller layout and the right-stick camera; Thor layout fixes (`/thor`). |
 | `WoWMobileLink` | Always | Sends unit info to the touch targeting page. |
-| ConsolePortLK | Always | Controller UI. Replaces any other ConsolePort. |
+| ConsolePortLK | Unless WoW Imito's ConsolePort is there | Controller UI. Replaces any other ConsolePort. WoW Imito's modified ConsolePort is kept instead: it runs much smoother in combat. |
 | NotPlater | If missing | Nameplates. Required for touch targeting. |
 
 `ThorControls` and `WoWMobileLink` are updated on Play when the app has a newer version.
