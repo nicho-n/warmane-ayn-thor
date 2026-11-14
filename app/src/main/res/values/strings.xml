@@ -31,6 +31,13 @@
     <string name="wow_password_saved_hint">Password saved. Type a new one to replace it</string>
     <string name="wow_auto_login_note">After Play, once the login screen shows, WoW Mobile types this password and presses Enter (once per launch). Tick \"Remember Account Name\" in WoW. The password is stored encrypted on this device only; untick to delete it.</string>
     <string name="wow_auto_login_no_password">Enter a password for auto-login</string>
+    <string name="wow_addons_title">Install addons</string>
+    <string name="wow_addons_message">These addons will be installed:\n%1$s\n\nA backup of your AddOns folder will be made in this folder. Continue?</string>
+    <string name="wow_addons_continue">Continue</string>
+    <string name="wow_addons_installing">Backing up and installing addons…</string>
+    <string name="wow_addons_done_backup">Addons installed. Your old AddOns folder was saved as %1$s in the game folder.</string>
+    <string name="wow_addons_done">Addons installed.</string>
+    <string name="wow_addons_failed">Couldn\'t install the addons. Any backup made is in the game folder as AddOns-backup-….zip.</string>
     <string name="wow_settings_saved">Settings saved</string>
     <string name="wow_save">Save</string>
     <string name="run">Run</string>

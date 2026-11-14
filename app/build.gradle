@@ -68,6 +68,13 @@ android {
         }
     }
 
+    // The repo's addons/ folder is bundled as assets/wowmobile/addons (see AddonInstaller).
+    sourceSets {
+        main {
+            assets.srcDirs += ["$buildDir/generated/addonAssets"]
+        }
+    }
+
     ndkVersion '24.0.8215888'
 
     externalNativeBuild {
@@ -77,6 +84,12 @@ android {
         }
     }
 }
+
+task syncAddonAssets(type: Sync) {
+    from "$rootDir/addons"
+    into "$buildDir/generated/addonAssets/wowmobile/addons"
+}
+preBuild.dependsOn syncAddonAssets
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.4.0'

@@ -178,6 +178,8 @@ public class WowMobileActivity extends AppCompatActivity {
         preloaderDialog.show(R.string.wow_preparing_game);
         final Handler handler = new Handler();
         Executors.newSingleThreadExecutor().execute(() -> {
+            // Keep our installed addons in step with this app (only their own folders).
+            new AddonInstaller(this, gameFolder).updateInstalled();
             Provisioner provisioner = new Provisioner(this, gameFolder);
             boolean provisioned = provisioner.provision();
 
@@ -198,6 +200,51 @@ public class WowMobileActivity extends AppCompatActivity {
                     File shortcutFile = helper.ensureShortcut(container, gameFolder);
                     startActivity(helper.createLaunchIntent(container, shortcutFile));
                 });
+            });
+        });
+    }
+
+    /**
+     * After a game folder is chosen: lists the addons this app will install and, on
+     * Continue, zips Interface/AddOns into the game folder and installs them.
+     */
+    private void offerAddons(GameFolder gameFolder) {
+        AddonInstaller installer = new AddonInstaller(this, gameFolder);
+        ArrayList<String> names = new ArrayList<>(installer.plan());
+        Provisioner provisioner = new Provisioner(this, gameFolder);
+        // Installed by the provisioner on first Play (upstream behaviour); listed so the user knows.
+        if (!provisioner.isWowImitoFolder() && provisioner.getStatus() == Provisioner.Status.PENDING &&
+            !new File(gameFolder.getAddOnsDir(), "ConsolePort/ConsolePort.toc").isFile()) names.add("ConsolePortLK");
+
+        StringBuilder list = new StringBuilder();
+        for (String name : names) list.append("\n  •  ").append(name);
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(R.string.wow_addons_title)
+            .setMessage(getString(R.string.wow_addons_message, list.toString()))
+            .setPositiveButton(R.string.wow_addons_continue, (d, w) -> installAddons(installer))
+            .setNegativeButton(R.string.cancel, null)
+            .show();
+    }
+
+    private void installAddons(AddonInstaller installer) {
+        preloaderDialog.show(R.string.wow_addons_installing);
+        Executors.newSingleThreadExecutor().execute(() -> {
+            String message;
+            try {
+                File backup = installer.backup();
+                installer.install();
+                message = backup != null ? getString(R.string.wow_addons_done_backup, backup.getName()) : getString(R.string.wow_addons_done);
+            }
+            catch (Exception e) {
+                message = getString(R.string.wow_addons_failed);
+            }
+            final String result = message;
+            runOnUiThread(() -> {
+                preloaderDialog.close();
+                new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setMessage(result)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show();
             });
         });
     }
@@ -246,6 +293,7 @@ public class WowMobileActivity extends AppCompatActivity {
             builder.setPositiveButton(R.string.wow_use_this_folder, (d, w) -> {
                 preferences.edit().putString(PREF_GAME_FOLDER, dir.getPath()).apply();
                 updateStatus();
+                offerAddons(candidate);
             });
         }
         builder.setNegativeButton(R.string.cancel, (d, w) -> {});

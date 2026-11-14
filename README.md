@@ -3,42 +3,19 @@
 An Android launcher for playing [Warmane](https://www.warmane.com) (World of Warcraft
 3.3.5a) on the AYN Thor. It installs as *Warmane Ayn Thor Launcher*.
 
-The game runs on the top screen. The bottom screen has button pages, a keyboard, a
-trackpad and a touch-targeting page that lists nearby units so you can tap one to
-target it.
-
 This is a fork of [WoW Mobile](https://github.com/marcocastignoli/wow-mobile), and uses the
 touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabuntjer/AYN-Thor-WoW-Launcher).
 
-## Touch targeting
+## Features
 
-The **Target** page shows units as boxes with class colour, health and name. Tapping a
-box targets that unit.
+- **Touch targeting:** a page on the bottom screen lists nearby units; tap one to target it.
+- **Touch screen controls:** button pages, a keyboard and a trackpad on the bottom screen,
+  with the game on the top screen.
+- **Opinionated console controls:** a fixed ConsolePort controller layout, plus **A** to
+  play, enter the world and log in, and the **D-pad** to pick a character.
 
-- Tapping a nearby unit clicks its nameplate, so you get that unit even when others share
-  its name.
-- A unit keeps its box while it's in view. When it goes out of range its box empties.
-- Units that share a name are numbered, e.g. `(1) Wild Boar`, `(2) Wild Boar`, in the box
-  and on the nameplate.
-
-| Tab | Shows |
-|---|---|
-| Nearby | Hostile and neutral units |
-| NPC | Friendly NPCs and players |
-| Party | Your party on the left, nearby enemies on the right |
-| BG Team | Your battleground team |
-| BG All | Your team and the enemy team |
-| Arena | Your team and the arena opponents |
-
-The Target page needs the `WoWMobileLink` addon (see [Addons](#addons)).
-
-## Other features
-
-- Controller support for ConsolePort. On the app's start screen **A** presses Play; on the
-  character screen **A** enters the world and the **D-pad** picks a character.
-- Optional auto-login: the password is saved in *WoW Settings*, encrypted with an Android
-  Keystore key, and stays on the device.
-- Box64 0.4.5 (older builds were disconnected by Warmane at the character list).
+Also: optional auto-login (password encrypted on the device) and Box64 0.4.5, which
+Warmane accepts.
 
 ## Requirements
 
@@ -50,21 +27,23 @@ The Target page needs the `WoWMobileLink` addon (see [Addons](#addons)).
 ## Setup
 
 1. Install the APK from [Releases](../../releases), or build it (see below).
-2. Open the app and pick the folder that contains `Wow.exe`.
+2. Open the app and pick the folder that contains `Wow.exe`. The app lists the addons it
+   will install and, if you continue, first zips your `Interface/AddOns` folder into the
+   game folder as `AddOns-backup-<date>.zip`.
 3. In **WoW Settings**, set the realm server to `logon.warmane.com` (*Custom*). Turn on
    auto-login if you want it.
-4. Copy the addons below into `Interface/AddOns`.
-5. Press **Play**.
+4. Press **Play**.
 
 ## Addons
 
-Copy the ones you need from `addons/` into `World of Warcraft 3.3.5a/Interface/AddOns/`.
-Each adds its own folder and doesn't change other addons.
+The app installs these from the `addons/` folder. Only their own folders are replaced;
+other addons are left alone. When the app has a newer version of an installed one, it
+updates it on Play.
 
-| Addon | Needed? | What it does |
+| Addon | Installed | What it does |
 |---|---|---|
-| `WoWMobileLink` | For the Target page | Sends unit info to the app and numbers units that share a name. |
-| `ThorFixes` | Only with WoW Imito's addons | Hides WoW Imito's status strip when this app runs the game. |
+| `WoWMobileLink` | Always | Sends unit info to the touch targeting page. |
+| `ThorFixes` | With WoW Imito's addons | Hides WoW Imito's status strip when this app runs the game. |
 
 ConsolePortLK is installed by the app on first launch if it isn't already there.
 
