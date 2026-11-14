@@ -110,6 +110,8 @@ build is unsigned.
 - [AYN Thor WoW Launcher](https://github.com/wyattabuntjer/AYN-Thor-WoW-Launcher) by
   wyattabuntjer: the bottom-screen pad is ported from it.
 - [WoW Imito](https://github.com/MrAnonymz/WoW-Imito) by MrAnonymz: original inspiration.
+  WoW Imito's modified ConsolePort (based on ConsolePortLK Enhanced by SuttonX) is used
+  when it's installed: it runs much smoother in combat. It isn't bundled.
 - [Winlator](https://github.com/brunodev85/winlator) by brunodev85: the Wine + Box64
   engine.
 - [Box64](https://github.com/ptitSeb/box64) by ptitSeb and contributors.
