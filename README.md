@@ -118,9 +118,7 @@ build is unsigned.
 - [Winlator](https://github.com/brunodev85/winlator) by brunodev85: the Wine + Box64
   engine.
 - [Box64](https://github.com/ptitSeb/box64) by ptitSeb and contributors.
-- [ConsolePortLK](https://github.com/leoaviana/ConsolePortLK) by leoaviana: bundled
-  unmodified (1.5.0-rc2); on install, one line of `ConsolePort.toc` is changed so
-  bindings are saved per account.
+- [ConsolePortLK](https://github.com/leoaviana/ConsolePortLK) by leoaviana: included.
 - [NotPlater](https://github.com/RichSteini/NotPlater) by RichSteini: bundled (MIT).
 
 ## License
