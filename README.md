@@ -99,9 +99,6 @@ Your ConsolePort bindings are kept.
 ```
 
 Requires JDK 17, Android SDK (platform 34), NDK 24.0.8215888 and CMake 3.22.1.
-Release signing reads `~/.wow-mobile-secrets/keystore.properties`
-(`storeFile`/`storePassword`/`keyAlias`/`keyPassword`); without it the release
-build is unsigned.
 
 ## Credits
 
