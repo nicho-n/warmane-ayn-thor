@@ -12,6 +12,7 @@
 --  5. Triggers: hides the big L2/R2 icons on the ConsolePort bar (toggleable).
 --  6. Cursor trail: hides ConsolePort's controller icon next to the pointer.
 --  8. Cast bar: WoW's own cast bar instead of ConsolePortBar's restyled one.
+--  9. GCD sweep: skips the 1.5 s cooldown animation on every button (performance).
 --  7. Default bindings: characters without ConsolePort bindings get the layout in
 --     DEFAULT_BINDINGS (Select targets a friend, L1 an enemy, Start interacts with
 --     the unit under the pointer; see README).
@@ -84,7 +85,7 @@ local function applyDefaultBindings(force)
     return false
 end
 
-local defaults = { petbar = true, xpLift = 10, hideTriggers = true, hideTrail = true, defaultCastBar = true }
+local defaults = { petbar = true, xpLift = 10, hideTriggers = true, hideTrail = true, defaultCastBar = true, hideGcd = true }
 local db
 local pending = {}
 local events = CreateFrame("Frame")
@@ -236,6 +237,19 @@ local function applyTrail()
 end
 
 ---------------------------------------------------------------------------
+-- 9. Global cooldown sweep: every spell, instant or not, starts a 1.5 s cooldown
+-- animation on every action button at once (dozens on ConsolePort's bar), which is
+-- expensive under emulation. Skip sweeps that short; real cooldowns still show.
+---------------------------------------------------------------------------
+local GCD_MAX = 1.5
+
+hooksecurefunc("CooldownFrame_SetTimer", function(self, start, duration, enable)
+    if db and db.hideGcd and enable and enable ~= 0 and duration and duration > 0 and duration <= GCD_MAX then
+        self:Hide()
+    end
+end)
+
+---------------------------------------------------------------------------
 -- Events
 ---------------------------------------------------------------------------
 events:RegisterEvent("ADDON_LOADED")
@@ -295,6 +309,9 @@ SlashCmdList.THORCONTROLS = function(input)
         if InCombatLockdown() then msg("Leave combat first."); return end
         db.hideTriggers = value == "off"
         if applyTriggers() then ReloadUI() else msg("ConsolePort bar isn't loaded; the change applies next time it loads.") end
+    elseif cmd == "gcd" and (value == "on" or value == "off") then
+        db.hideGcd = value == "off"
+        msg("Global cooldown sweep on action buttons " .. onoff(not db.hideGcd))
     elseif cmd == "profile" and (value == "on" or value == "off") then
         -- WoW's own per-addon CPU measuring; costs a little itself, so only while looking.
         SetCVar("scriptProfile", value == "on" and "1" or "0")
@@ -342,6 +359,7 @@ SlashCmdList.THORCONTROLS = function(input)
         msg("/thor petbar on|off  - hide Blizzard's default pet bar")
         msg("/thor triggers on|off  - show the L2/R2 icons on the ConsolePort bar (reloads)")
         msg("/thor castbar on|off  - WoW's own cast bar instead of ConsolePort's (reloads)")
+        msg("/thor gcd on|off  - global cooldown sweep on the action buttons")
         msg("/thor profile on|off, /thor cpu  - measure which addons use the most CPU")
         msg("/thor trail on|off  - controller icon next to the pointer")
         msg("/thor calibrate  - put the controller calibration back")
