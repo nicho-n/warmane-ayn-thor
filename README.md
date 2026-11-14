@@ -9,7 +9,7 @@
 ---
 
 An Android launcher for playing [Warmane](https://www.warmane.com) (World of Warcraft
-3.3.5a) on the AYN Thor. It installs as *Warmane Ayn Thor Launcher*.
+3.3.5a) on the AYN Thor.
 
 This is a fork of [WoW Mobile](https://github.com/marcocastignoli/wow-mobile), and uses the
 touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabuntjer/AYN-Thor-WoW-Launcher).
