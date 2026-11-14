@@ -28,10 +28,8 @@ import java.util.zip.ZipOutputStream;
  *  - ThorControls and WoWMobileLink (this app's own; also updated on Play when the app
  *    carries a newer version),
  *  - NotPlater, if it isn't there (touch targeting reads its nameplates),
- *  - the bundled stock ConsolePortLK, replacing whatever ConsolePort is there, except WoW
- *    Imito's modified ConsolePort, which is kept: it runs much smoother in combat (stock
- *    ConsolePortLK's round buttons drop frames on every cast). WoW Imito's own addons are
- *    moved to Interface/AddOns-disabled.
+ *  - the bundled stock ConsolePortLK, replacing whatever ConsolePort is there. WoW Imito's
+ *    own addons, which need its modified ConsolePort, are moved to Interface/AddOns-disabled.
  * Before installing, the whole AddOns folder is zipped into the game folder. Only the
  * folders of the addons being installed (or moved) are touched.
  */
@@ -70,16 +68,10 @@ public class AddonInstaller {
         return names;
     }
 
-    /** WoW Imito's modified ConsolePort is installed (see the class comment); it's kept. */
-    public boolean hasWowImitoConsolePort() {
-        return new File(addOnsDir(), "ConsolePort/IMITO-CHANGES.txt").isFile()
-            || new File(addOnsDir(), "ConsolePort/ImitoIntegration.lua").isFile();
-    }
-
     /** Names of the addons [install] will put in, for the confirmation popup. */
     public List<String> plan() {
         List<String> names = new ArrayList<>();
-        if (!hasWowImitoConsolePort()) names.add("ConsolePortLK");
+        names.add("ConsolePortLK");
         for (String name : OWN) names.add(name);
         if (needsNotPlater()) names.add("NotPlater");
         return names;
@@ -127,9 +119,8 @@ public class AddonInstaller {
         File addOnsDir = addOnsDir();
         if (!addOnsDir.isDirectory() && !addOnsDir.mkdirs()) throw new IOException("can't create " + addOnsDir);
 
-        boolean keepConsolePort = hasWowImitoConsolePort();
         disableWowImitoAddons();
-        if (!keepConsolePort) installConsolePort();
+        installConsolePort();
         for (String name : OWN) installAddon(name);
         if (needsNotPlater()) installAddon(NOTPLATER);
     }

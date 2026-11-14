@@ -85,7 +85,7 @@ The app installs these. Only their own folders are replaced; other addons are le
 |---|---|---|
 | `ThorControls` | Always | Sets up ConsolePort for the controller layout and the right-stick camera; Thor layout fixes (`/thor`). |
 | `WoWMobileLink` | Always | Sends unit info to the touch targeting page. |
-| ConsolePortLK | Unless WoW Imito's ConsolePort is there | Controller UI. Replaces any other ConsolePort. WoW Imito's modified ConsolePort is kept instead: it runs much smoother in combat. |
+| ConsolePortLK | Always | Controller UI. Replaces any other ConsolePort. |
 | NotPlater | If missing | Nameplates. Required for touch targeting. |
 
 `ThorControls` and `WoWMobileLink` are updated on Play when the app has a newer version.
@@ -110,8 +110,6 @@ build is unsigned.
 - [AYN Thor WoW Launcher](https://github.com/wyattabuntjer/AYN-Thor-WoW-Launcher) by
   wyattabuntjer: the bottom-screen pad is ported from it.
 - [WoW Imito](https://github.com/MrAnonymz/WoW-Imito) by MrAnonymz: original inspiration.
-  WoW Imito's modified ConsolePort (based on ConsolePortLK Enhanced by SuttonX) is used
-  when it's installed: it runs much smoother in combat. It isn't bundled.
 - [Winlator](https://github.com/brunodev85/winlator) by brunodev85: the Wine + Box64
   engine.
 - [Box64](https://github.com/ptitSeb/box64) by ptitSeb and contributors.
