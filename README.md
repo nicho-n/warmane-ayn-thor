@@ -7,7 +7,8 @@ The game runs on the top screen. The bottom screen has button pages, a keyboard,
 trackpad and a touch-targeting page that lists nearby units so you can tap one to
 target it.
 
-This is a fork of [WoW Mobile](https://github.com/marcocastignoli/wow-mobile).
+This is a fork of [WoW Mobile](https://github.com/marcocastignoli/wow-mobile), and uses the
+touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabuntjer/AYN-Thor-WoW-Launcher).
 
 ## Touch targeting
 
