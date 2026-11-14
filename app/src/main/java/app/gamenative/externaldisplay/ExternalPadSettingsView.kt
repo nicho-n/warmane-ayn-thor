@@ -49,6 +49,12 @@ class ExternalPadSettingsView(
         content.removeAllViews()
         scrollTo(0, 0)
 
+        section("Movement", collapsible = true) {
+            addView(toggleRow(listOf("Moving backwards rotates character" to PadSettings.TURN_AROUND)))
+            addView(note("Left stick all the way down turns you around and runs that way; part way down walks backwards."))
+            addView(toggleRow(listOf("Free camera rotation while strafing" to PadSettings.STRAFE_FREE_CAMERA)))
+            addView(note("Strafing straight left or right turns on camera rotate mode, so the right stick swings only the camera. When the strafe ends you turn to face where the camera looks."))
+        }
         section("Targeting", collapsible = true) {
             addView(note("The Target page's Nearby list: enemies (hostile and neutral) fill it from one corner, friendlies from the other."))
             addView(cycleRow("Enemies fill from", PadSettings.NEARBY_ENEMIES_TOP_LEFT, listOf("Bottom right, going up", "Top left, going down")))

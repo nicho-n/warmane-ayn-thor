@@ -22,8 +22,11 @@ import com.winlator.xserver.XServer;
  *   L2 -> held left Shift   R2 -> held left Ctrl
  *   Left stick -> held arrow keys (move / strafe)
  *   Right stick -> camera (NUMPADDIVIDE or right mouse held + mouse motion, see
- *   setCameraKey); R3 toggles pointer mode, where the right stick moves the cursor
- *   and L3 left-clicks.
+ *   setCameraKey). R3 toggles camera rotate mode: the right stick swings the camera
+ *   around the character (left mouse held) without turning it; R3 again puts the camera
+ *   back behind the character. Back (the Thor's small button) toggles pointer mode, where
+ *   the right stick moves the cursor and L3 left-clicks. Otherwise L3 turns friendly
+ *   nameplates on or off.
  *
  * Touch never touches the keyboard state here, so a tap cannot release held
  * movement or modifier keys. Touch and the camera share the one mouse pointer,
@@ -56,6 +59,12 @@ public class ConsolePortController {
 
     private float rightX, rightY;
     private boolean pointerMode;
+    /** Camera rotate mode (R3): the right stick turns only the camera, with the left button. */
+    private boolean orbitMode;
+    /** The camera currently holds the left mouse button (camera rotate mode). */
+    private boolean cameraLeftHeld;
+    /** That drag is held with NUMPADMULTIPLY (ThorControls) rather than the left button. */
+    private boolean orbitByKey;
     private boolean cameraHeld;
     private boolean touchActive;
     private long rightIdleSince;
@@ -134,6 +143,17 @@ public class ConsolePortController {
                 setCtrl(down);
                 return true;
             case KeyEvent.KEYCODE_BUTTON_THUMBR:
+                if (down && event.getRepeatCount() == 0) {
+                    // While strafing, R3 ends the automatic camera rotate mode until the strafe ends.
+                    if (autoOrbit) {
+                        autoOrbit = false;
+                        autoOrbitOff = true;
+                    }
+                    setOrbitMode(!orbitMode);
+                }
+                return true;
+            case KeyEvent.KEYCODE_BACK:
+                // The Thor's small Back button (from its built-in controller).
                 if (down && event.getRepeatCount() == 0) setPointerMode(!pointerMode);
                 return true;
             case KeyEvent.KEYCODE_BUTTON_THUMBL:
@@ -141,6 +161,8 @@ public class ConsolePortController {
                     if (down) xServer.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT);
                     else xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT);
                 }
+                // Outside pointer mode: friendly nameplates on/off (ThorControls, Alt+Ctrl+F6).
+                else if (down && event.getRepeatCount() == 0) tapCtrlAlt(XKeycode.KEY_F6);
                 return true;
             case KeyEvent.KEYCODE_BUTTON_MODE:
                 return true; // Guide/Home is unused by ConsolePort
@@ -219,10 +241,14 @@ public class ConsolePortController {
         // Left stick -> arrows, with hysteresis so it doesn't flicker at the edge.
         float lx = ExternalController.getCenteredAxis(event, MotionEvent.AXIS_X, -1);
         float ly = ExternalController.getCenteredAxis(event, MotionEvent.AXIS_Y, -1);
-        setArrow(0, ly, -1);
-        setArrow(2, ly, 1);
+        lastLy = ly;
+        lastLx = lx;
+        updateTurnAround(ly);
+        applyStickY(ly);
         setArrow(1, lx, 1);
         setArrow(3, lx, -1);
+        // Only straight sideways: a diagonal doesn't count as strafing here.
+        updateAutoOrbit((arrows[1] || arrows[3]) && !arrows[0] && !arrows[2]);
 
         // D-pad reported as hat axes -> F1..F4
         float hx = event.getAxisValue(MotionEvent.AXIS_HAT_X);
@@ -245,6 +271,142 @@ public class ConsolePortController {
         rightY = ExternalController.getCenteredAxis(event, MotionEvent.AXIS_RZ, -1);
         if (rightActive() && !ticking) startTicking();
         return true;
+    }
+
+    // Turn around: the left stick pulled fully back turns the character and the camera half a
+    // circle and runs that way (part way back still backpedals); letting the stick come back
+    // returns to normal movement. The turn is the right stick's own: mouselook (NUMPADDIVIDE,
+    // ThorControls) with the mouse moved TURN_PIXELS sideways in quick steps, like a right-button
+    // drag on a PC. Around it ThorControls swaps in the mouse sensitivity TURN_PIXELS was measured
+    // with (Alt+Ctrl+F9) and puts the player's own back (Alt+Ctrl+F10), so any mouse
+    // sensitivity gives the same half turn.
+    private static final float TURN_AROUND = 0.99f;
+    private static final float TURN_AROUND_SIDEWAYS = 0.3f;
+    /** Mouse movement for half a turn, measured in game with mouseSpeed 0.7 (and that client's own cameraYawMoveSpeed). */
+    private static final int TURN_PIXELS = 800;
+    private static final int TURN_STEP = 160;
+    private boolean turnedAround, turnReady;
+    private float lastLy, lastLx;
+
+    private void updateTurnAround(float ly) {
+        if (turnedAround) {
+            if (ly <= STICK_RELEASE) turnedAround = false;
+            return;
+        }
+        // Only with the stick nearly all the way straight down, so a diagonal doesn't turn around.
+        if (ly <= TURN_AROUND || Math.abs(lastLx) > TURN_AROUND_SIDEWAYS || !cameraKey || inPreGame()
+            || !app.gamenative.externaldisplay.PadSettings.INSTANCE.boolValue(app.gamenative.externaldisplay.PadSettings.TURN_AROUND)) return;
+        turnedAround = true;
+        turnReady = false;
+        tapCtrlAlt(XKeycode.KEY_F9);
+        turningUntil = System.currentTimeMillis() + 500;
+        handler.postDelayed(() -> turnByMouse(TURN_PIXELS, () -> {
+            tapCtrlAlt(XKeycode.KEY_F10);
+            handler.postDelayed(() -> {
+                turnReady = true;
+                applyStickY(lastLy);
+            }, 50);
+        }), 60);
+    }
+
+
+    /** Turns the character and camera: mouselook with the mouse moved {@code pixels} sideways. */
+    private void turnByMouse(int pixels, Runnable then) {
+        XKeycode key = XKeycode.KEY_KP_DIVIDE;
+        releaseCamera();
+        int steps = Math.max(1, Math.abs(pixels) / TURN_STEP);
+        int end = 40 + steps * 16 + 40;
+        turningUntil = System.currentTimeMillis() + end + 50;
+        pointerPlaced = true;
+        xServer.injectPointerMove(xServer.screenInfo.width / 2, xServer.screenInfo.height / 2);
+        xServer.injectKeyPress(key);
+        int sent = 0;
+        for (int i = 1; i <= steps; i++) {
+            int to = pixels * i / steps, part = to - sent;
+            sent = to;
+            handler.postDelayed(() -> moveMouse(part, 0), 40 + i * 16);
+        }
+        handler.postDelayed(() -> {
+            xServer.injectKeyRelease(key);
+            then.run();
+        }, end);
+    }
+
+    /** The right stick leaves the camera alone until then (turnByMouse holds its key). */
+    private long turningUntil;
+
+    // Strafing straight sideways turns camera rotate mode on by itself, so the right stick
+    // swings only the camera. When the strafe ends the character turns to face where the camera
+    // looks and the camera stays put, like a right-click: after a camera-only drag, starting
+    // mouselook (with a small nudge of the mouse) turns the character to the camera's direction
+    // (tested in game). Camera rotate mode turned on with R3 is left alone.
+    private boolean autoOrbit, autoOrbitOff, aligning;
+    private static final int FACE_NUDGE = 10;
+
+    private void updateAutoOrbit(boolean strafing) {
+        if (!strafing) {
+            autoOrbitOff = false;
+            if (autoOrbit) {
+                autoOrbit = false;
+                endAutoOrbit();
+            }
+            return;
+        }
+        if (autoOrbit || autoOrbitOff || orbitMode || pointerMode || aligning || inPreGame()
+            || !app.gamenative.externaldisplay.PadSettings.INSTANCE.boolValue(app.gamenative.externaldisplay.PadSettings.STRAFE_FREE_CAMERA)) return;
+        autoOrbit = true;
+        setOrbitMode(true);
+    }
+
+    private void endAutoOrbit() {
+        if (!orbitMode) return;
+        if (!cameraKey) {
+            setOrbitMode(false);
+            return;
+        }
+        releaseCamera();
+        orbitMode = false;
+        faceCamera();
+    }
+
+    /** Turns the character to the camera's direction: mouselook with a small nudge (see above). */
+    private void faceCamera() {
+        if (!cameraKey || orbitMode || pointerMode) return;
+        releaseCamera();
+        aligning = true;
+        applyStickY(lastLy);
+        turningUntil = System.currentTimeMillis() + 200;
+        pointerPlaced = true;
+        xServer.injectPointerMove(xServer.screenInfo.width / 2, xServer.screenInfo.height / 2);
+        xServer.injectKeyPress(XKeycode.KEY_KP_DIVIDE);
+        handler.postDelayed(() -> moveMouse(FACE_NUDGE, 0), 40);
+        handler.postDelayed(() -> moveMouse(-FACE_NUDGE, 0), 80);
+        handler.postDelayed(() -> {
+            xServer.injectKeyRelease(XKeycode.KEY_KP_DIVIDE);
+            aligning = false;
+            applyStickY(lastLy);
+        }, 130);
+    }
+
+    /** Up / down arrows from the left stick; once turned around, pulling back runs forward. */
+    private void applyStickY(float ly) {
+        if (aligning) {
+            setArrow(0, 0, -1);
+            setArrow(2, 0, 1);
+            return;
+        }
+        if (!turnedAround) {
+            setArrow(0, ly, -1);
+            setArrow(2, ly, 1);
+            return;
+        }
+        setArrow(2, 0, 1);
+        setArrow(0, turnReady ? -ly : 0, -1);
+    }
+
+    private boolean inPreGame() {
+        return glueScreens != null
+            && glueScreens.getCurrent() != app.gamenative.externaldisplay.GlueScreenWatcher.Screen.NONE;
     }
 
     private void setArrow(int index, float value, int sign) {
@@ -307,9 +469,43 @@ public class ConsolePortController {
     }
 
     private void setPointerMode(boolean on) {
+        // Camera rotate mode only pauses meanwhile: R3 still ends it and puts the camera back.
         pointerMode = on;
         if (on) releaseCamera();
         if (pointerModeListener != null) pointerModeListener.onPointerModeChanged(on);
+    }
+
+    /**
+     * Camera rotate mode. Turning it on saves the camera's view (ThorControls, Alt+Ctrl+F7:
+     * SaveView); turning it off puts that view back (Alt+Ctrl+F8: SetView), so the camera
+     * returns behind the character.
+     */
+    private void setOrbitMode(boolean on) {
+        // Starting it hands the right stick back to the camera; ending it leaves the cursor as it is.
+        if (on && pointerMode) setPointerMode(false);
+        releaseCamera();
+        orbitMode = on;
+        if (on) tapCtrlAlt(XKeycode.KEY_F7);
+        // A moment after the camera drag has been let go, so WoW has ended it first. Once the
+        // camera is back (ThorControls repeats it for 0.2 s), the character is lined up with it.
+        else {
+            handler.postDelayed(() -> { if (!orbitMode) tapCtrlAlt(XKeycode.KEY_F8); }, 50);
+            handler.postDelayed(this::faceCamera, 350);
+        }
+    }
+
+    /** Alt+Ctrl+key with the trigger modifiers let go meanwhile (Shift would change the key). */
+    private void tapCtrlAlt(XKeycode key) {
+        setModifiersSuspended(true);
+        xServer.injectKeyPress(XKeycode.KEY_CTRL_L);
+        xServer.injectKeyPress(XKeycode.KEY_ALT_L);
+        xServer.injectKeyPress(key);
+        handler.postDelayed(() -> {
+            xServer.injectKeyRelease(key);
+            xServer.injectKeyRelease(XKeycode.KEY_ALT_L);
+            xServer.injectKeyRelease(XKeycode.KEY_CTRL_L);
+            setModifiersSuspended(false);
+        }, 40);
     }
 
     /**
@@ -349,9 +545,22 @@ public class ConsolePortController {
             if (active) rightIdleSince = 0;
             else if (rightIdleSince == 0) rightIdleSince = now;
 
-            if (active && !touchBlocksCamera()) {
+            if (active && !touchBlocksCamera() && now >= turningUntil) {
                 float speed = pointerMode ? POINTER_SPEED
                     : CAMERA_SPEED * app.gamenative.externaldisplay.PadSettings.INSTANCE.cameraSpeedFactor();
+                if (!pointerMode && !cameraHeld && orbitMode) {
+                    // WoW's camera-only drag (left button, or NUMPADMULTIPLY bound to it by
+                    // ThorControls). Always started from the middle of the screen: a drag
+                    // begun with the pointer elsewhere made the camera spin very fast.
+                    pointerPlaced = true;
+                    xServer.injectPointerMove(xServer.screenInfo.width / 2, xServer.screenInfo.height / 2);
+                    cameraKeyHeld = false;
+                    cameraLeftHeld = true;
+                    orbitByKey = cameraKey;
+                    if (orbitByKey) xServer.injectKeyPress(XKeycode.KEY_KP_MULTIPLY);
+                    else xServer.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT);
+                    cameraHeld = true;
+                }
                 if (!pointerMode && !cameraHeld) {
                     cameraKeyHeld = cameraKey;
                     // Until something has put the pointer on the game (a touch does), WoW's
@@ -401,7 +610,12 @@ public class ConsolePortController {
     private void releaseCamera() {
         if (!cameraHeld) return;
         cameraHeld = false;
-        if (cameraKeyHeld) xServer.injectKeyRelease(XKeycode.KEY_KP_DIVIDE);
+        if (cameraLeftHeld) {
+            cameraLeftHeld = false;
+            if (orbitByKey) xServer.injectKeyRelease(XKeycode.KEY_KP_MULTIPLY);
+            else xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT);
+        }
+        else if (cameraKeyHeld) xServer.injectKeyRelease(XKeycode.KEY_KP_DIVIDE);
         else xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_RIGHT);
     }
 

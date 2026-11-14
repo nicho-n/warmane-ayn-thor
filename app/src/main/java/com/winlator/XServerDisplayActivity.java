@@ -309,6 +309,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         super.onWindowFocusChanged(hasFocus);
 
         if (hasFocus) {
+            // Android brings the system bars (and the gesture handle) back after popups and
+            // swipes; hide them again whenever the game screen gets focus back.
+            AppUtils.hideSystemUI(this);
             if (capturePointerOnExternalMouse) touchpadView.requestPointerCapture();
 
             if (winHandler != null && clipboardManager != null && clipboardManager.hasPrimaryClip()) {

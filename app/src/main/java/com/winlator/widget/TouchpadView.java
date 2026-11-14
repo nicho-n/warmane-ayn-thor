@@ -136,12 +136,17 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
 
     // ---- Direct touch (wow-mobile): the pointer goes to the finger, like a touchscreen.
     // Tap = left click, touch-and-drag = hold left and drag, two-finger tap = right click.
+    // Drag is off for now: in the game world a left drag turns the camera, which went wrong.
+    // Without it a drag only moves the pointer, and a tap is still a click.
+    private static final boolean DIRECT_DRAG = false;
     private static final int DIRECT_DRAG_DELAY_MS = 150;
     private boolean directTouch = false;
     private boolean directPending, directLeftDown, directTwoFinger;
     private float directStartX, directStartY;
+    /** Last finger position (view coordinates) and the part of a pixel not sent yet, while dragging. */
+    private float directLastX, directLastY, directRestX, directRestY;
     private final Runnable directBeginDrag = () -> {
-        if (directPending && !directTwoFinger) {
+        if (DIRECT_DRAG && directPending && !directTwoFinger) {
             directPending = false;
             pressDirectLeft();
         }
@@ -154,6 +159,26 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
     private void moveDirect(float x, float y) {
         float[] p = XForm.transformPoint(xform, x, y);
         xServer.injectPointerMove((int)p[0], (int)p[1]);
+    }
+
+    /**
+     * While the left button is held, the pointer moves by how far the finger moved instead of
+     * jumping to the finger: when WoW turns the camera (left-button drag) it puts the pointer
+     * back in the middle each frame and reads how far it moved, so a jump to the finger made
+     * the camera spin. Dragging a window or an item still follows the finger, as the pointer
+     * starts under it.
+     */
+    private void moveDirectBy(float x, float y) {
+        float[] from = XForm.transformPoint(xform, directLastX, directLastY);
+        float[] to = XForm.transformPoint(xform, x, y);
+        directLastX = x;
+        directLastY = y;
+        directRestX += to[0] - from[0];
+        directRestY += to[1] - from[1];
+        int dx = (int)directRestX, dy = (int)directRestY;
+        directRestX -= dx;
+        directRestY -= dy;
+        if (dx != 0 || dy != 0) xServer.injectPointerMoveDelta(dx, dy);
     }
 
     private void pressDirectLeft() {
@@ -176,6 +201,9 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
                 directTwoFinger = false;
                 directStartX = event.getX();
                 directStartY = event.getY();
+                directLastX = directStartX;
+                directLastY = directStartY;
+                directRestX = directRestY = 0;
                 moveDirect(directStartX, directStartY);
                 directPending = true;
                 postDelayed(directBeginDrag, DIRECT_DRAG_DELAY_MS);
@@ -193,9 +221,14 @@ public class TouchpadView extends View implements View.OnCapturedPointerListener
                 if (directPending && Math.hypot(event.getX() - directStartX, event.getY() - directStartY) >= MAX_TAP_TRAVEL_DISTANCE) {
                     directPending = false;
                     removeCallbacks(directBeginDrag);
-                    pressDirectLeft();
+                    if (DIRECT_DRAG) pressDirectLeft();
                 }
-                moveDirect(event.getX(), event.getY());
+                if (directLeftDown) moveDirectBy(event.getX(), event.getY());
+                else {
+                    moveDirect(event.getX(), event.getY());
+                    directLastX = event.getX();
+                    directLastY = event.getY();
+                }
                 break;
             case MotionEvent.ACTION_UP:
                 removeCallbacks(directBeginDrag);

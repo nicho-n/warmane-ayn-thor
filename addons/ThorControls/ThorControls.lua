@@ -210,6 +210,8 @@ local function applyCamera()
     ClearOverrideBindings(owner)
     for _, mod in ipairs(MODIFIERS) do
         SetOverrideBinding(owner, true, mod .. "NUMPADDIVIDE", "THORCONTROLS_CAMERALOOK")
+        -- The app's camera rotate mode (R3): turns the camera only, like a left-button drag.
+        SetOverrideBinding(owner, true, mod .. "NUMPADMULTIPLY", "CAMERAORSELECTORMOVE")
     end
 end
 
@@ -724,6 +726,52 @@ local function toggleNameplates(cvar)
     NAMEPLATES_ON = GetCVar("nameplateShowEnemies") == "1"
     FRIENDNAMEPLATES_ON = GetCVar("nameplateShowFriends") == "1"
 end
+-- Alt+Ctrl+F7 / Alt+Ctrl+F8 (the app's R3 camera rotate mode): saves the camera view when
+-- it starts and puts it back when it ends, so the camera returns behind the character.
+local CAMERA_VIEW = 5
+local orbitStart = CreateFrame("Button", "ThorControlsCameraSave", UIParent)
+orbitStart:SetScript("OnClick", function() SaveView(CAMERA_VIEW) end)
+-- Put back at once, without WoW's camera move animation (cameraViewBlendStyle 2 = instant).
+-- While the character moves, one SetView can land only part of the way, so it is repeated
+-- every frame for a moment; then the player's own blend setting goes back.
+local RESTORE_TIME = 0.2
+local orbitEnd = CreateFrame("Button", "ThorControlsCameraRestore", UIParent)
+local restoreBlend, restoreLeft
+local function restoreView()
+    if not restoreLeft then restoreBlend = GetCVar("cameraViewBlendStyle") end
+    restoreLeft = RESTORE_TIME
+    SetCVar("cameraViewBlendStyle", "2")
+    SetView(CAMERA_VIEW)
+    orbitEnd:SetScript("OnUpdate", function(f, elapsed)
+        restoreLeft = restoreLeft - elapsed
+        SetView(CAMERA_VIEW)
+        if restoreLeft <= 0 then
+            f:SetScript("OnUpdate", nil)
+            restoreLeft = nil
+            SetCVar("cameraViewBlendStyle", restoreBlend)
+        end
+    end)
+end
+orbitEnd:SetScript("OnClick", function() restoreView() end)
+-- Alt+Ctrl+F9 / Alt+Ctrl+F10 (the app's turn around, left stick pulled fully back): the app
+-- turns the character with a fixed mouse movement, measured with this sensitivity. It is
+-- used just for the turn; then the player's own comes back.
+local TURN_CVARS = { mouseSpeed = "0.7" }
+local turnSaved
+local turnStart = CreateFrame("Button", "ThorControlsTurnStart", UIParent)
+turnStart:SetScript("OnClick", function()
+    if not turnSaved then
+        turnSaved = {}
+        for name in pairs(TURN_CVARS) do turnSaved[name] = GetCVar(name) end
+    end
+    for name, value in pairs(TURN_CVARS) do SetCVar(name, value) end
+end)
+local turnEnd = CreateFrame("Button", "ThorControlsTurnEnd", UIParent)
+turnEnd:SetScript("OnClick", function()
+    if not turnSaved then return end
+    for name, value in pairs(turnSaved) do SetCVar(name, value) end
+    turnSaved = nil
+end)
 local enemyPlates = CreateFrame("Button", "ThorControlsEnemyNameplates", UIParent)
 enemyPlates:SetScript("OnClick", function() toggleNameplates("nameplateShowEnemies") end)
 local friendPlates = CreateFrame("Button", "ThorControlsFriendlyNameplates", UIParent)
@@ -734,6 +782,10 @@ local function bindBattlegroundsKey()
     SetOverrideBindingClick(leaveButton, false, "ALT-SHIFT-L", "ThorControlsLeaveParty")
     SetOverrideBindingClick(enemyPlates, false, "ALT-CTRL-F5", "ThorControlsEnemyNameplates")
     SetOverrideBindingClick(friendPlates, false, "ALT-CTRL-F6", "ThorControlsFriendlyNameplates")
+    SetOverrideBindingClick(orbitStart, false, "ALT-CTRL-F7", "ThorControlsCameraSave")
+    SetOverrideBindingClick(orbitEnd, false, "ALT-CTRL-F8", "ThorControlsCameraRestore")
+    SetOverrideBindingClick(turnStart, false, "ALT-CTRL-F9", "ThorControlsTurnStart")
+    SetOverrideBindingClick(turnEnd, false, "ALT-CTRL-F10", "ThorControlsTurnEnd")
 end
 
 local function noop() end

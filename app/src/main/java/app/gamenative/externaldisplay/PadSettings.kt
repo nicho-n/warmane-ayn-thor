@@ -79,6 +79,10 @@ object PadSettings {
     const val PARTY_EXTRA_COLUMN = "party_extra_column"
     /** Controller button combination for a forward jump: 0 off, 1 L2+R1, 2 R2+L1, 3 L2+L1, 4 R2+R1. */
     const val FORWARD_JUMP = "forward_jump"
+    /** Left stick all the way down turns the character around and runs (part way still backpedals). */
+    const val TURN_AROUND = "turn_around"
+    /** Strafing straight sideways turns on camera rotate mode until the strafe ends. */
+    const val STRAFE_FREE_CAMERA = "strafe_free_camera"
     /** The Target page's focus row (Clear Focus / Set Focus or your focus). */
     const val FOCUS_BAR = "focus_bar"
     /** XP bar (ThorControls addon, see XpBarSync): shown, numbers on it, width (% of D-pad Left to A), height, offsets. */
@@ -168,6 +172,8 @@ object PadSettings {
         PARTY_EXTRA_COLUMN to false,
         FOCUS_BAR to true,
         FORWARD_JUMP to 0,
+        TURN_AROUND to true,
+        STRAFE_FREE_CAMERA to true,
         XP_SHOW to true,
         XP_TEXT to false,
         XP_WIDTH to 100,
@@ -344,6 +350,9 @@ object PadSettings {
 
     /** Right-stick camera speed as a factor (1 = original); for Java, where int() can't be called. */
     fun cameraSpeedFactor(): Float = int(CAMERA_SPEED) / 100f
+
+    /** [bool] for Java, under the same name pattern as [intValue]. */
+    fun boolValue(key: String): Boolean = bool(key)
 
     /** [int] for Java, where a method named int can't be called. */
     fun intValue(key: String): Int = int(key)

@@ -514,6 +514,8 @@ class ExternalActionBarView(
                     page("Auto-run", XKeycode.KEY_NUM_LOCK),
                     page("Walk / run", XKeycode.KEY_KP_DIVIDE),
                     page("Sit / stand", XKeycode.KEY_X),
+                    // Follows the current target (WoW has no default key for it).
+                    command("Follow", "/follow"),
                     page("Hide UI", XKeycode.KEY_Z, XKeycode.KEY_ALT_L),
                     // ThorControls toggles each kind on its own (WoW's V / Shift+V get out of step).
                     page("Enemy nameplates", XKeycode.KEY_F5, XKeycode.KEY_CTRL_L, XKeycode.KEY_ALT_L),
