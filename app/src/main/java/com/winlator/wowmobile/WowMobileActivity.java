@@ -39,6 +39,7 @@ import java.util.concurrent.Executors;
  */
 public class WowMobileActivity extends AppCompatActivity {
     public static final String PREF_GAME_FOLDER = "wow_game_folder";
+    private static final String DONATE_URL = "https://buymeacoffee.com/nichon";
     private SharedPreferences preferences;
     private TextView tvStatus;
     private TextView tvFolder;
@@ -64,6 +65,14 @@ public class WowMobileActivity extends AppCompatActivity {
         findViewById(R.id.BTWowSettings).setOnClickListener((v) -> startActivity(new Intent(this, WowSettingsActivity.class)));
         findViewById(R.id.BTContainerSettings).setOnClickListener((v) -> startActivity(new Intent(this, ContainerSettingsActivity.class)));
         findViewById(R.id.BTAdvanced).setOnClickListener((v) -> startActivity(new Intent(this, MainActivity.class)));
+        findViewById(R.id.BTDonate).setOnClickListener((v) -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(DONATE_URL)));
+            }
+            catch (android.content.ActivityNotFoundException e) {
+                AppUtils.showToast(this, DONATE_URL);
+            }
+        });
 
         if (!requestAppPermissions()) RootFSInstaller.installIfNeeded(this);
     }
