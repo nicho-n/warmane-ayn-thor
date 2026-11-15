@@ -11,7 +11,16 @@
 --   the first bit of the three being the most significant.
 --   Bits come MSB-first from this byte stream:
 --     'W' 'M' version seq mode slotCount recordCount
---     records: slot class hp flags x y num nameLen name...
+--     records: slot class hp flags x y num nameLen name... hpAmount(3) auraCount auras...
+--       hpAmount: current health, 0-16777214 (16777215 unknown), high byte first
+--       auras (only while the app shows buffs/debuffs, see OPEN_KEYS; else auraCount 0), up
+--       to AURA_MAX, most important first, each: icon(3) time kind
+--         icon: hash of the icon's file name (see iconHash), high byte first
+--         time: seconds left 0-180; 181-254: minutes left (value - 180); 255 no duration
+--         kind: 0-7 category (0 dispellable, 1 immunity, 2 crowd control, 3 silence,
+--               4 disarm, 5 root, 6 defensive cooldown, 7 your own debuff on an enemy)
+--               + 8 * dispel type (0 none,
+--               1 magic, 2 curse, 3 poison, 4 disease) + 64 if a debuff
 --       x, y: where the unit's nameplate is on screen, 1-255 left/top to right/bottom (0 = none);
 --       the app clicks there to target exactly that unit (several mobs can share a name)
 --       num: 1-127 for nearby units (also shown on their plates; 0 for party/arena/BG slots),
@@ -40,7 +49,7 @@
 -- battleground/nearby slots by name. Secure buttons can't be changed in combat, so
 -- name slots keep their names while in combat; new names get flag 128.
 
-local CELLS, BAND, VERSION = 320, 0.004, 3
+local CELLS, BAND, VERSION = 320, 0.004, 4
 local MAX_BYTES = math.floor(CELLS * 3 / 8)
 local INTERVAL = 0.1
 -- How often plate numbers are kept up while the Target page is closed.
@@ -109,7 +118,104 @@ local function unitRecord(slot, unit, name)
         elseif UnitReaction(unit, "player") == 4 then flags = flags + 16
         else flags = flags + 32 end
     end
-    return { slot = slot, class = CLASS[token or ""] or 0, hp = hp, flags = flags, name = name or UnitName(unit) or "" }
+    return { slot = slot, class = CLASS[token or ""] or 0, hp = hp, flags = flags, name = name or UnitName(unit) or "",
+        hpAmount = UnitExists(unit) and UnitHealth(unit) or nil, unit = UnitExists(unit) and unit or nil }
+end
+
+---------------------------------------------------------------------------
+-- Buffs and debuffs (only while the app's "Show buffs/debuffs" is on)
+---------------------------------------------------------------------------
+local showAuras = false
+local AURA_MAX = 6
+
+-- Important auras by category (1 most important). Mostly LoseControl's WotLK list, plus
+-- big defensive cooldowns. Matched by name, so every rank counts.
+local AURA_LIST = {
+    -- 1 immunities
+    { 642, 45438, 19263, 46924, 34692, 1022, 31224, 48707 },
+    -- 2 crowd control
+    { 30217, 710, 5211, 2094, 7922, 1833, 67769, 12809, 33786, 6789, 44572, 31661, 5782, 30216, 60210, 3355,
+      47481, 1776, 853, 51514, 2637, 2812, 5484, 51209, 12355, 20253, 5246, 24394, 408, 22570, 605, 118, 9005,
+      64044, 8122, 50518, 20066, 12798, 6770, 1513, 19503, 6358, 9484, 30283, 46968, 50519, 39796, 20170,
+      10326, 20549, 19386 },
+    -- 3 silences
+    { 25046, 1330, 63529, 15487, 18498, 18469, 18425, 34490, 47476, 24259, 43523 },
+    -- 4 disarms
+    { 53359, 676, 51722, 64346, 50541 },
+    -- 5 roots
+    { 19306, 64695, 339, 19185, 19675, 63685, 33395, 39965, 122, 11071, 55536, 58373, 23694, 13099, 50245,
+      55080, 54706, 4167 },
+    -- 6 defensive cooldowns
+    { 33206, 47788, 498, 871, 61336, 22812, 5277, 48792, 47585, 6940 },
+}
+local auraCategory
+local function categories()
+    if auraCategory then return auraCategory end
+    auraCategory = {}
+    for category, ids in ipairs(AURA_LIST) do
+        for _, id in ipairs(ids) do
+            local name = GetSpellInfo(id)
+            if name and not auraCategory[name] then auraCategory[name] = category end
+        end
+    end
+    return auraCategory
+end
+
+local DISPEL = { Magic = 1, Curse = 2, Poison = 3, Disease = 4 }
+
+-- The app finds each icon in the game's own files by this hash of its file name (lower
+-- case, no folder, no ".blp"): h = (h * 31 + byte) mod 16777213, which stays exact in Lua.
+local iconHashes = {}
+local function iconHash(path)
+    local h = iconHashes[path]
+    if h then return h end
+    local base = strlower(path):match("([^\\/]+)$") or ""
+    base = base:gsub("%.blp$", "")
+    h = 0
+    for i = 1, #base do h = (h * 31 + base:byte(i)) % 16777213 end
+    iconHashes[path] = h
+    return h
+end
+
+local function timeLeft(duration, expires)
+    if not duration or duration <= 0 or not expires or expires <= 0 then return 255 end
+    local left = math.max(0, expires - GetTime())
+    if left <= 180 then return math.floor(left + 0.5) end
+    return math.min(254, 180 + math.ceil(left / 60))
+end
+
+-- Up to AURA_MAX auras worth showing: the listed ones on anybody, your own (and your pet's)
+-- debuffs on enemies (DoTs, to see when to reapply), debuffs you can dispel on friends, and
+-- buffs you can purge or spellsteal on enemies.
+local function unitAuras(unit)
+    if not unit or not UnitExists(unit) then return {} end
+    local cats, hostile, picked = categories(), UnitCanAttack("player", unit), {}
+    for pass = 1, 2 do
+        local harmful = pass == 1
+        local filter = harmful and "HARMFUL" or "HELPFUL"
+        for i = 1, 40 do
+            local name, _, icon, _, dispelType, duration, expires, caster, stealable = UnitAura(unit, i, filter)
+            if not name then break end
+            local cat = cats[name]
+            if not cat and harmful and hostile and (caster == "player" or caster == "pet") then cat = 7 end
+            local dispel = DISPEL[dispelType or ""] or 0
+            local want = cat ~= nil
+            if not want then
+                if harmful then want = not hostile and dispel > 0
+                else want = hostile and (dispel == 1 or stealable) end
+            end
+            if want and icon then
+                picked[#picked + 1] = { rank = cat or 9, icon = iconHash(icon), time = timeLeft(duration, expires),
+                    kind = (cat or 0) + dispel * 8 + (harmful and 64 or 0) }
+            end
+        end
+    end
+    table.sort(picked, function(a, b)
+        if a.rank ~= b.rank then return a.rank < b.rank end
+        return a.time < b.time
+    end)
+    for i = #picked, AURA_MAX + 1, -1 do picked[i] = nil end
+    return picked
 end
 
 -- Enemy players the client can see right now, by name -> unit token.
@@ -320,7 +426,8 @@ local function platesShown()
                     px = math.max(1, math.min(255, math.floor(cx * scale / UIParent:GetWidth() * 255 + 0.5)))
                     py = math.max(1, math.min(255, math.floor((1 - cy * scale / UIParent:GetHeight()) * 255 + 0.5)))
                 end
-                found[#found + 1] = { frame = f, nameRegion = nameRegion, level = level, name = name, hp = hp, class = cls, flags = flags, y = f:GetBottom() or 0, px = px, py = py }
+                found[#found + 1] = { frame = f, nameRegion = nameRegion, level = level, name = name, hp = hp, class = cls, flags = flags, y = f:GetBottom() or 0, px = px, py = py,
+                    hpAmount = math.floor(bar:GetValue() or 0) }
             elseif f.wmlNum then
                 f.wmlNum:Hide()
             end
@@ -641,7 +748,35 @@ end
 local lastScoreRequest = 0
 -- Battleground players listed per side (Arathi Basin and Eye of the Storm have 15).
 local BG_MAX = 15
+-- Stress test (/wml stress): a made-up full raid (25) and 20 nearby enemies, each with
+-- AURA_MAX auras with real icons and running timers, to check the strip, the app and the
+-- frame rate at the worst case. Nothing is targeted (the units don't exist).
+local stress = false
+local STRESS_ICONS = { "Spell_Nature_Polymorph", "Spell_Shadow_AbominationExplosion", "Spell_Shadow_CurseOfSargeras",
+    "Spell_Fire_Immolation", "Spell_Holy_PowerWordShield", "Spell_Holy_Renew", "Spell_Shadow_PsychicScream",
+    "Spell_Frost_FrostNova", "Spell_Holy_SealOfMight", "Ability_Rogue_KidneyShot", "Spell_Nature_Rejuvenation",
+    "Spell_Shadow_UnholyStrength" }
+local function stressList()
+    local list, t = {}, GetTime()
+    local function fake(slot, i, enemy)
+        local auras = {}
+        for k = 1, AURA_MAX do
+            local n = (i * 3 + k) % #STRESS_ICONS + 1
+            auras[k] = { icon = iconHash("Interface\\Icons\\" .. STRESS_ICONS[n]), time = math.floor((i * 7 + k * 11 - t) % 30),
+                kind = (k % 7) + ((k % 4) * 8) + (k % 2 == 0 and 64 or 0) }
+        end
+        local hp = math.floor((t * 10 + i * 13) % 100)
+        return { slot = slot, class = (i % 10) + 1, hp = hp, hpAmount = hp * 250, name = (enemy and "Enemy " or "Raider ") .. i,
+            flags = (enemy and 8 or 32) + 64, num = enemy and 0 or (math.floor((i - 1) / 5) + 1), fakeAuras = auras }
+    end
+    for i = 1, 25 do list[#list + 1] = fake(99 + i, i, false) end
+    for i = 1, 10 do list[#list + 1] = fake(39 + i, i, true) end
+    for i = 1, 10 do list[#list + 1] = fake(69 + i, i + 10, true) end
+    return 2, list
+end
+
 local function collect()
+    if stress then return stressList() end
     local _, instance = IsInInstance()
     local mode = MODE[instance or "none"] or 0
     local list = {}
@@ -750,11 +885,21 @@ local function build()
         repeat
             local r = list[cursor + 1]
             local name = r.name:sub(1, 24)
-            if #b + 8 + #name + 2 > MAX_BYTES then break end
+            -- Auras only for units WoW has a token for (a nameplate only when it's the target).
+            local unit = r.unit or (bit.band(r.flags, 4) ~= 0 and "target") or nil
+            local auras = r.fakeAuras or (showAuras and r.slot ~= 129 and unitAuras(unit)) or {}
+            if #b + 8 + #name + 4 + #auras * 5 + 2 > MAX_BYTES then break end
             b[#b + 1] = r.slot; b[#b + 1] = r.class; b[#b + 1] = r.hp; b[#b + 1] = r.flags
             b[#b + 1] = r.px or 0; b[#b + 1] = r.py or 0; b[#b + 1] = r.num or 0
             b[#b + 1] = #name
             for k = 1, #name do b[#b + 1] = name:byte(k) end
+            local amount = r.hpAmount and math.max(0, math.min(16777214, math.floor(r.hpAmount))) or 16777215
+            b[#b + 1] = math.floor(amount / 65536); b[#b + 1] = math.floor(amount / 256) % 256; b[#b + 1] = amount % 256
+            b[#b + 1] = #auras
+            for _, a in ipairs(auras) do
+                b[#b + 1] = math.floor(a.icon / 65536); b[#b + 1] = math.floor(a.icon / 256) % 256; b[#b + 1] = a.icon % 256
+                b[#b + 1] = a.time; b[#b + 1] = a.kind
+            end
             count = count + 1
             cursor = (cursor + 1) % #list
         until cursor == start
@@ -766,8 +911,177 @@ local function build()
     return b
 end
 
+---------------------------------------------------------------------------
+-- Quest log (the app's Quests page; INSERT open key, see OPEN_KEYS)
+--
+-- Wire format: 'W' 'Q' QUEST_VERSION seq lineCount count, then count lines:
+--   index type flags extra len text...   (index 1-255: the line's place, top to bottom)
+--   type: 1 zone header (flags 1: the zone you're in), 2 quest title "[level] Title" ("+"
+--         after the level for elite/group/dungeon quests; flags 1 complete, 2 failed,
+--         4 daily, 8 tracked; extra: its index in WoW's quest log, for /wml q|track|abandon),
+--         3 objective "Boars slain: 3/10" (flags 1 done)
+--   CRC-16 as for units. Changed lines are sent first (twice, in case the app missed a
+--   packet); the rest rotate, so the app always catches up.
+-- Quest details (after "/wml q N"), in between: 'W' 'D' 1 seq N chunkCount chunk len text...
+--   CRC-16: the quest's objectives text and description, in pieces, each sent 3 times.
+---------------------------------------------------------------------------
+local QUEST_VERSION = 2
+local QUEST_TEXT_MAX = 90
+local questMode = false
+local questLinesCache, questLinesAt, questDirty = {}, 0, true
+local questSent, questCursor = {}, 0
+
+-- Cuts a UTF-8 string to max bytes without splitting a character.
+local function cut(s, max)
+    if #s <= max then return s end
+    s = s:sub(1, max)
+    while #s > 0 do
+        local last = s:byte(#s)
+        if last < 128 then break end
+        -- Drop the last character's bytes when it was cut short.
+        local start = #s
+        while start > 1 and s:byte(start) >= 128 and s:byte(start) < 192 do start = start - 1 end
+        local lead, need = s:byte(start), 1
+        if lead >= 240 then need = 4 elseif lead >= 224 then need = 3 elseif lead >= 192 then need = 2 end
+        if #s - start + 1 >= need then break end
+        s = s:sub(1, start - 1)
+    end
+    return s
+end
+
+local function questLines()
+    local now = GetTime()
+    if not questDirty and now - questLinesAt < 1 then return questLinesCache end
+    questDirty, questLinesAt = false, now
+    local lines, here = {}, GetRealZoneText()
+    for i = 1, GetNumQuestLogEntries() do
+        if #lines >= 255 then break end
+        local title, level, tag, _, isHeader, _, complete, daily = GetQuestLogTitle(i)
+        if title then
+            if isHeader then
+                lines[#lines + 1] = { 1, title == here and 1 or 0, cut(title, QUEST_TEXT_MAX) }
+            else
+                local flags = (complete == 1 and 1 or 0) + (complete == -1 and 2 or 0) + (daily and 4 or 0)
+                    + (IsQuestWatched(i) and 8 or 0)
+                local label = "[" .. (level or 0) .. ((tag and tag ~= "") and "+" or "") .. "] " .. title
+                lines[#lines + 1] = { 2, flags, cut(label, QUEST_TEXT_MAX), i }
+                for j = 1, GetNumQuestLeaderBoards(i) or 0 do
+                    if #lines >= 255 then break end
+                    local text, _, finished = GetQuestLogLeaderBoard(j, i)
+                    if text and text ~= "" then lines[#lines + 1] = { 3, finished and 1 or 0, cut(text, QUEST_TEXT_MAX) } end
+                end
+            end
+        end
+    end
+    questLinesCache = lines
+    return lines
+end
+
+local function buildQuests()
+    local lines = questLines()
+    seq = (seq + 1) % 256
+    local b = { 87, 81, QUEST_VERSION, seq, #lines, 0 }
+    local count, picked = 0, {}
+    local function add(i)
+        local l = lines[i]
+        if picked[i] or #b + 5 + #l[3] + 2 > MAX_BYTES then return false end
+        picked[i] = true
+        b[#b + 1] = i; b[#b + 1] = l[1]; b[#b + 1] = l[2]; b[#b + 1] = math.min(255, l[4] or 0); b[#b + 1] = #l[3]
+        for k = 1, #l[3] do b[#b + 1] = l[3]:byte(k) end
+        count = count + 1
+        local sig = l[1] .. ":" .. l[2] .. ":" .. (l[4] or 0) .. ":" .. l[3]
+        local s = questSent[i]
+        if s and s.sig == sig then s.n = s.n + 1 else questSent[i] = { sig = sig, n = 1 } end
+        return true
+    end
+    -- Changed lines first (until each has gone out twice), then the next ones in turn.
+    for i, l in ipairs(lines) do
+        local s = questSent[i]
+        if not s or s.sig ~= l[1] .. ":" .. l[2] .. ":" .. (l[4] or 0) .. ":" .. l[3] or s.n < 2 then
+            if not add(i) then break end
+        end
+    end
+    if #lines > 0 then
+        if questCursor >= #lines then questCursor = 0 end
+        local start = questCursor
+        repeat
+            if not picked[questCursor + 1] and not add(questCursor + 1) then break end
+            questCursor = (questCursor + 1) % #lines
+        until questCursor == start
+    end
+    b[6] = count
+    local crc = crc16(b, #b)
+    b[#b + 1] = math.floor(crc / 256)
+    b[#b + 1] = crc % 256
+    return b
+end
+
+local questWatch = CreateFrame("Frame")
+for _, e in ipairs({ "QUEST_LOG_UPDATE", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED", "UNIT_QUEST_LOG_CHANGED" }) do
+    questWatch:RegisterEvent(e)
+end
+questWatch:SetScript("OnEvent", function() questDirty = true end)
+
+-- Quest details for the app (/wml q N): the quest's objectives text and description, cut into
+-- pieces that fit a packet, each sent DETAIL_REPEAT times between quest log packets.
+local DETAIL_PIECE, DETAIL_REPEAT = 100, 3
+local detail, detailNext, detailTurn = nil, 1, false
+
+local function plain(text)
+    return (text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+end
+
+local function questDetails(index)
+    local title, _, _, _, isHeader = GetQuestLogTitle(index)
+    if not title or isHeader then detail = nil; return end
+    local selected = GetQuestLogSelection()
+    SelectQuestLogEntry(index)
+    local description, objectives = GetQuestLogQuestText()
+    SelectQuestLogEntry(selected or 0)
+    local nl = string.char(10)
+    local text = plain(objectives) .. nl .. nl .. plain(description)
+    local pieces = {}
+    while #text > 0 and #pieces < 40 do
+        local piece = cut(text, DETAIL_PIECE)
+        if piece == "" then piece = text:sub(1, 1) end
+        pieces[#pieces + 1] = piece
+        text = text:sub(#piece + 1)
+    end
+    if #pieces == 0 then pieces[1] = "" end
+    detail = { index = index, pieces = pieces, sent = 0 }
+    detailNext = 1
+end
+
+local function buildDetail()
+    seq = (seq + 1) % 256
+    local piece = detail.pieces[detailNext]
+    local b = { 87, 68, 1, seq, detail.index, #detail.pieces, detailNext, #piece }
+    for k = 1, #piece do b[#b + 1] = piece:byte(k) end
+    detailNext = detailNext % #detail.pieces + 1
+    detail.sent = detail.sent + 1
+    if detail.sent >= #detail.pieces * DETAIL_REPEAT then detail = nil end
+    local crc = crc16(b, #b)
+    b[#b + 1] = math.floor(crc / 256)
+    b[#b + 1] = crc % 256
+    return b
+end
+
+-- Track / untrack and abandon, by quest log index; title (lower case) must still match.
+local function questByIndex(index, title)
+    local t, _, _, _, isHeader = GetQuestLogTitle(index or 0)
+    if not t or isHeader then return nil end
+    if title and title ~= "" and not strlower(t):find(title, 1, true) then return nil end
+    return t
+end
+
 local function draw()
-    local b = build()
+    local b
+    if questMode and detail then
+        detailTurn = not detailTurn
+        b = detailTurn and buildDetail() or buildQuests()
+    else
+        b = questMode and buildQuests() or build()
+    end
     local bitsLeft, acc, idx = 0, 0, 1
     for i = 1, CELLS do
         local v = 0
@@ -820,18 +1134,32 @@ numberer:SetScript("OnUpdate", function(_, elapsed)
 end)
 
 -- Open keys: each turns the strip on and says what Nearby includes besides enemies
--- (friendly NPCs, friendly players). The app sends one when the page opens and when the
--- Targeting settings change; a single key, so ConsolePort redraws its buttons only once.
-local OPEN_KEYS = { K = { false, true }, M = { false, false }, N = { true, true }, B = { true, false } }
+-- (friendly NPCs, friendly players) and whether buffs/debuffs are sent. The app sends one
+-- when the page opens and when the Targeting settings change; a single key, so ConsolePort
+-- redraws its buttons only once. K M N B: no buffs/debuffs; HOME END PAGEUP PAGEDOWN: the same
+-- with them (keys that don't depend on Num Lock, unlike the number pad's digits).
+local OPEN_KEYS = {
+    K = { false, true, false }, M = { false, false, false }, N = { true, true, false }, B = { true, false, false },
+    HOME = { false, true, true }, END = { false, false, true }, PAGEUP = { true, true, true }, PAGEDOWN = { true, false, true },
+    -- The Quests page: the strip carries the quest log instead (see buildQuests).
+    INSERT = { nil, nil, nil, true },
+}
 local openButtons = {}
 for key, opt in pairs(OPEN_KEYS) do
     local b = CreateFrame("Button", "WoWMobileLinkOpen" .. key)
     b:SetScript("OnClick", function()
+        questMode = opt[4] == true
+        if questMode then
+            questDirty, questSent = true, {}
+            WoWMobileLink_SetActive(true)
+            return
+        end
         if showFriendlyNPCs ~= opt[1] or showFriendlyPlayers ~= opt[2] then
             showFriendlyNPCs, showFriendlyPlayers = opt[1], opt[2]
             -- Units change lists: start the groups afresh.
             npcGroup, playerGroup = newGroup(), newGroup()
         end
+        showAuras = opt[3]
         WoWMobileLink_SetActive(true)
     end)
     openButtons[key] = b
@@ -885,6 +1213,33 @@ SLASH_WOWMOBILELINK1 = "/wml"
 SlashCmdList.WOWMOBILELINK = function(arg)
     arg = strlower(strtrim(arg or ""))
     if arg == "on" then WoWMobileLink_SetActive(true)
-    elseif arg == "off" then WoWMobileLink_SetActive(false) end
+    elseif arg == "off" then WoWMobileLink_SetActive(false)
+    elseif arg:match("^q %d+$") then
+        questDetails(tonumber(arg:match("%d+")))
+        return
+    elseif arg:match("^track %d+") then
+        local index = tonumber(arg:match("^track (%d+)"))
+        if questByIndex(index, arg:match("^track %d+ (.+)$")) then
+            if IsQuestWatched(index) then RemoveQuestWatch(index) else AddQuestWatch(index) end
+            if WatchFrame_Update then WatchFrame_Update() end
+            questDirty = true
+        end
+        return
+    elseif arg:match("^abandon %d+") then
+        local index = tonumber(arg:match("^abandon (%d+)"))
+        local title = questByIndex(index, arg:match("^abandon %d+ (.+)$"))
+        if title then
+            SelectQuestLogEntry(index)
+            SetAbandonQuest()
+            AbandonQuest()
+            questDirty = true
+            DEFAULT_CHAT_FRAME:AddMessage("Abandoned: " .. title)
+        end
+        return
+    elseif arg == "stress" then
+        stress = not stress
+        DEFAULT_CHAT_FRAME:AddMessage("WoW Mobile Link stress test (25 raiders, 20 enemies, " .. AURA_MAX .. " auras each): " .. (stress and "on" or "off"))
+        return
+    end
     DEFAULT_CHAT_FRAME:AddMessage("WoW Mobile Link: " .. (active and "on" or "off"))
 end

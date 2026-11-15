@@ -6,12 +6,17 @@ import com.winlator.xserver.XKeycode
 import com.winlator.xserver.XServer
 
 /**
- * wow-mobile: sends a chat slash command (e.g. "/ty", "/target party1") the way a player types it:
- * Enter opens the chat box, the letters are typed, Enter sends. Shift/Ctrl/Alt held on the pad or by
- * the controller triggers are let go for the duration, so "/" isn't typed as "?".
+ * wow-mobile: sends a chat slash command (e.g. "/ty", "/target party1") the way a player types it.
+ * A command opens the chat box with WoW's "/" key (the box opens with the "/" already in it, so it
+ * can't be lost); other text opens it with Enter. Then a pause while the box opens (typed straight
+ * away, the first key was sometimes lost, and a command went out as /say), the letters, and Enter.
+ * Shift/Ctrl/Alt held on the pad or by the controller triggers are let go for the duration, so "/"
+ * isn't typed as "?".
  */
 internal object SlashTyper {
     private const val STEP_MS = 12L
+    /** How long the chat box gets to open before the letters are typed. */
+    private const val OPEN_MS = 150L
     private val handler = Handler(Looper.getMainLooper())
     private var busy = false
 
@@ -27,16 +32,17 @@ internal object SlashTyper {
         val padMods = onSuspendModifiers()
         PadBridge.controllerModifierHold?.invoke(true)
         // Release any modifier still down (e.g. one the user holds elsewhere) so letters type plainly.
+        val isCommand = command.startsWith("/")
+        handler.postDelayed({ tap(xServer, if (isCommand) XKeycode.KEY_SLASH else XKeycode.KEY_ENTER) }, STEP_MS)
         val steps = mutableListOf<() -> Unit>()
-        steps += { tap(xServer, XKeycode.KEY_ENTER) }
-        keys.forEach { k -> steps += { tap(xServer, k) } }
+        (if (isCommand) keys.drop(1) else keys).forEach { k -> steps += { tap(xServer, k) } }
         steps += { tap(xServer, XKeycode.KEY_ENTER) }
         steps += {
             PadBridge.controllerModifierHold?.invoke(false)
             onResumeModifiers(padMods)
             busy = false
         }
-        steps.forEachIndexed { i, step -> handler.postDelayed(step, STEP_MS * (i + 1)) }
+        steps.forEachIndexed { i, step -> handler.postDelayed(step, STEP_MS + OPEN_MS + STEP_MS * i) }
     }
 
     /**

@@ -180,10 +180,24 @@ class ExternalActionBarView(
             if (this::rightColumn.isInitialized) rightColumn.visibility = GONE
             (pageHost.layoutParams as LayoutParams).weight = pageWeight()
             pageHost.requestLayout()
+            PadBridge.questPageShown = false
+            PadBridge.setTargetPageVisible(true)
+            return
+        }
+        // wow-mobile: the Quests page is the quest log, also from the link (see QuestLogView).
+        if (page.id == "quests") {
+            pageHost.addView(QuestLogView(context, theme) { command -> SlashTyper.type(xServer, command, onSuspendModifiers, onResumeModifiers) }.apply {
+                layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) }
+            })
+            if (this::rightColumn.isInitialized) rightColumn.visibility = GONE
+            (pageHost.layoutParams as LayoutParams).weight = pageWeight()
+            pageHost.requestLayout()
+            PadBridge.questPageShown = true
             PadBridge.setTargetPageVisible(true)
             return
         }
         if (this::rightColumn.isInitialized) rightColumn.visibility = VISIBLE
+        PadBridge.questPageShown = false
         PadBridge.setTargetPageVisible(false)
         val slots = orderedSlots(page.id, page.slots).filter { !PadSettings.isHidden(it.label) }
         val columns = if (slots.size > SINGLE_COLUMN_MAX) slots.chunked((slots.size + 1) / 2) else listOf(slots)
@@ -440,14 +454,14 @@ class ExternalActionBarView(
 
         /** The pages shown side by side: those switched on in settings, or all of them if none is. */
         private fun sidePages(): List<Page> {
-            val on = PAGES.filter { page ->
+            val on = PAGES.filter { it.slots.isNotEmpty() }.filter { page ->
                 when (page.id) {
                     "interface" -> PadSettings.bool(PadSettings.SIDE_SHOW_INTERFACE)
                     "target" -> PadSettings.bool(PadSettings.SIDE_SHOW_TARGET)
                     else -> PadSettings.bool(PadSettings.SIDE_SHOW_UTILITY)
                 }
             }
-            return on.ifEmpty { PAGES }
+            return on.ifEmpty { PAGES.filter { it.slots.isNotEmpty() } }
         }
 
         /** Most buttons one side-by-side column shows. */
@@ -525,6 +539,8 @@ class ExternalActionBarView(
                     page("Screenshot", XKeycode.KEY_PRTSCN),
                 ),
             ),
+            // wow-mobile: the quest log (QuestLogView), no buttons.
+            Page("quests", "Quests", emptyList()),
         )
 
         // The Chat Buttons panel: open chat, start a slash command, reply to the last whisper, close chat.

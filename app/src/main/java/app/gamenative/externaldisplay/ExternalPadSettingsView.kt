@@ -71,6 +71,10 @@ class ExternalPadSettingsView(
             addView(toggleRow(listOf("Nearby shows friendly NPCs" to PadSettings.NEARBY_FRIENDLY_NPC)))
             addView(toggleRow(listOf("Nearby shows friendly players" to PadSettings.NEARBY_FRIENDLY_PLAYER)))
             addView(toggleRow(listOf("Cursor back to screen centre after a target tap" to PadSettings.TARGET_CURSOR_CENTER)))
+            addView(toggleRow(listOf("Show health as an amount" to PadSettings.HP_AMOUNT)))
+            addView(note("Boxes show health like 12.3k instead of 85%."))
+            addView(toggleRow(listOf("Show buffs/debuffs" to PadSettings.SHOW_AURAS)))
+            addView(note("A row of icons with timers along the bottom of each box: immunities, crowd control, silences, disarms, roots and big defensive cooldowns on anyone, debuffs you can dispel on friends, and buffs you can purge on enemies. Icons come from your own game files. Nearby mobs only show them while they're your target."))
         }
         section("Interface", collapsible = true) {
             addView(toggleRow(listOf("Sort button in Bagnon" to PadSettings.BAG_SORT_BUTTON)))

@@ -39,6 +39,11 @@ public class PreloaderDialog {
         dialog.show();
     }
 
+    /** Changes the text while the dialog is showing (e.g. a download's progress). */
+    public synchronized void setText(CharSequence text) {
+        if (dialog != null) ((TextView)dialog.findViewById(R.id.TextView)).setText(text);
+    }
+
     public void showOnUiThread(final int textResId) {
         activity.runOnUiThread(() -> show(textResId));
     }

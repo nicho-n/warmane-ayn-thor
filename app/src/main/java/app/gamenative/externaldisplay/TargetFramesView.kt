@@ -43,6 +43,8 @@ class TargetFramesView(
     // Nearby each time the game starts; a mode picked in the list lasts until then (the view
     // is rebuilt whenever the page is shown).
     private var chosen = sessionMode ?: Mode.NEARBY
+    /** A focus set by double-tapping a box: the focus row shows even with the Focus bar setting off, until the focus is gone. */
+    private var focusFromTap = false
     private val tabs = mutableMapOf<Mode, TextView>()
     private lateinit var modeButton: TextView
     private val actionPills = mutableListOf<TextView>()
@@ -96,8 +98,8 @@ class TargetFramesView(
             "Invite" to { slash("/invite") },
             "Thank" to { slash("/thank") },
             "Sorry" to { slash("/sorry") },
-            "Map" to { key(XKeycode.KEY_M) },
             "Bags" to { key(XKeycode.KEY_B) },
+            "Map" to { key(XKeycode.KEY_M) },
         ).forEach { (label, action) ->
             val t = pill(label, action).apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f) }
             actionPills += t
@@ -174,8 +176,18 @@ class TargetFramesView(
             }
         }
         modeButton.text = mode.label
-        stylePill(modeButton, modeMenu.visibility == VISIBLE, true)
-        actionPills.forEach { stylePill(it, false, true) }
+        // The mode button in gold (it shows the mode you're in); the action buttons with a black edge.
+        if (modeMenu.visibility == VISIBLE) stylePill(modeButton, true, true)
+        else {
+            modeButton.background = theme.buttonBackground(resources.displayMetrics.density, 10f, false, emphasized = true)
+            modeButton.setTextColor(theme.text)
+            modeButton.alpha = 1f
+        }
+        actionPills.forEach {
+            it.background = theme.buttonBackground(resources.displayMetrics.density, 10f, false, accent = Color.BLACK)
+            it.setTextColor(theme.text)
+            it.alpha = 1f
+        }
         val receiving = System.currentTimeMillis() - LinkState.lastPacketAt < 2000
         status.text = if (receiving) "" else "Waiting for the WoW Mobile Link addon…"
         status.visibility = if (receiving) GONE else VISIBLE
@@ -220,10 +232,12 @@ class TargetFramesView(
             }
         }
         val focus = LinkState.unit(FOCUS_SLOT)
+        if (focus == null && focusFromTap && System.currentTimeMillis() - focusTapAt > FOCUS_TAP_GRACE_MS) focusFromTap = false
+        val showFocusRow = PadSettings.bool(PadSettings.FOCUS_BAR) || focusFromTap
         focusBox.bind(focus)
         (if (focus != null) VISIBLE else GONE).let { if (focusBox.visibility != it) focusBox.visibility = it }
         (if (focus != null) GONE else VISIBLE).let { if (setFocus.visibility != it) setFocus.visibility = it }
-        (if (PadSettings.bool(PadSettings.FOCUS_BAR)) VISIBLE else GONE).let { if (focusRow.visibility != it) focusRow.visibility = it }
+        (if (showFocusRow) VISIBLE else GONE).let { if (focusRow.visibility != it) focusRow.visibility = it }
         clearFocus.background = theme.buttonBackground(resources.displayMetrics.density, 10f, false, accent = MENU_GREY)
         clearFocus.setTextColor(theme.text)
         clearFocus.alpha = if (focus != null) 1f else 0.6f
@@ -239,7 +253,7 @@ class TargetFramesView(
         if (mode == Mode.RAID_HEAL) placeRaid()
         // Your focus is on the focus row: leave its box here empty rather than show it twice.
         // Players by name (unique); an NPC only when no other listed unit has its name.
-        val focusName = focus?.takeIf { PadSettings.bool(PadSettings.FOCUS_BAR) }?.name
+        val focusName = focus?.takeIf { showFocusRow }?.name
         val listed = boxes.mapNotNull { LinkState.unit(it.slot) }
         fun isFocus(u: LinkUnit) = focusName != null && u.name == focusName &&
             (u.flags and 64 != 0 || listed.count { it.name == focusName } == 1)
@@ -413,6 +427,9 @@ class TargetFramesView(
 
     /** Focus your target (Alt+Ctrl+F3). */
     private fun focusTarget() = chordCtrlAlt(XKeycode.KEY_F3)
+    /** When the last double tap set a focus; the game takes a moment to report the new focus. */
+    private var focusTapAt = 0L
+    private val FOCUS_TAP_GRACE_MS = 2000L
 
     /** Ctrl+Alt+[k]: WoWMobileLink's keys F1 target focus, F2 clear target, F3 set focus, F4 clear focus. */
     private fun chordCtrlAlt(k: XKeycode) = SlashTyper.chord(xServer, k, false, onSuspendModifiers, onResumeModifiers)
@@ -455,6 +472,31 @@ class TargetFramesView(
         else -> unit.name.takeIf { n -> n.isNotEmpty() && n.all { SlashTyper.canType(it) } }?.let { "/targetexact $it" }
     }
 
+    /** Health as "850", "8.5k", "12.3k", "1.2M". */
+    private fun amountText(v: Int): String = when {
+        v < 1000 -> "$v"
+        v < 100_000 -> String.format(java.util.Locale.US, "%.1fk", v / 1000f)
+        v < 1_000_000 -> "${v / 1000}k"
+        else -> String.format(java.util.Locale.US, "%.1fM", v / 1_000_000f)
+    }
+
+    /** Border colour: dispel type (as WoW colours debuff borders), else the aura's category. */
+    private fun auraColor(a: LinkAura): Int = when (a.dispelType) {
+        1 -> Color.rgb(51, 153, 255)
+        2 -> Color.rgb(153, 0, 255)
+        3 -> Color.rgb(0, 153, 0)
+        4 -> Color.rgb(153, 102, 0)
+        else -> when (a.category) {
+            1 -> Color.rgb(255, 209, 0)
+            2 -> Color.rgb(230, 40, 40)
+            3, 4 -> Color.rgb(255, 128, 0)
+            5 -> Color.rgb(0, 200, 220)
+            6 -> Color.rgb(80, 220, 80)
+            7 -> Color.rgb(170, 110, 255)
+            else -> if (a.isDebuff) Color.rgb(200, 0, 0) else Color.rgb(120, 120, 120)
+        }
+    }
+
     private inner class UnitBox(var slot: Int) : View(context) {
         private var unit: LinkUnit? = null
         /** Double tap: when the last tap was, and a clear-target waiting to see if a second tap comes. */
@@ -468,9 +510,22 @@ class TargetFramesView(
             setShadowLayer(3f, 0f, 1f, Color.BLACK)
         }
         private val rect = RectF()
+        private val iconRect = android.graphics.Rect()
+        private val iconBorder = RectF()
+        private val iconsLoaded: () -> Unit = { if (unit?.auras?.isNotEmpty() == true) invalidate() }
 
         init {
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) }
+        }
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            IconStore.addListener(iconsLoaded)
+        }
+
+        override fun onDetachedFromWindow() {
+            IconStore.removeListener(iconsLoaded)
+            super.onDetachedFromWindow()
         }
 
         fun bind(u: LinkUnit?) {
@@ -515,26 +570,84 @@ class TargetFramesView(
             fill.strokeWidth = dp(if (u.isTarget) 5 else 2).toFloat()
             fill.color = if (u.isTarget) Color.rgb(255, 209, 0) else Color.BLACK
             canvas.drawRoundRect(rect, r, r, fill)
+            // Buffs/debuffs (Settings > Targeting): a row of icons along the bottom; the name and
+            // health move up into the space above it, a little smaller.
+            val auras = if (PadSettings.bool(PadSettings.SHOW_AURAS)) u.auras else emptyList()
+            // Raid Heal mode's boxes are small: the icons go in a grid of up to 2 rows of 3, sized
+            // to fit; elsewhere one row along the bottom.
+            val raid = chosen == Mode.RAID_HEAL
+            val gap = dp(2).toFloat()
+            val cols = if (raid) 3 else Int.MAX_VALUE
+            val rows = if (auras.isEmpty()) 0 else if (raid) (auras.size + 2) / 3 else 1
+            val iconSize = when {
+                auras.isEmpty() -> 0f
+                raid -> minOf((width - dp(12) - 2 * gap) / 3f, height * 0.26f)
+                else -> (height * 0.42f).coerceAtMost(dp(30).toFloat())
+            }
+            val textBottom = if (auras.isNotEmpty()) height - rows * (iconSize + gap) - dp(2) else height.toFloat()
+            val textScale = if (auras.isNotEmpty()) 0.30f else 0.40f
+            if (auras.isNotEmpty()) drawAuras(canvas, auras, iconSize, cols, rows, gap)
             // Health right, name left in the space that's left: shrinks to fit, then "…".
-            val hpText = when { u.dead -> "Dead"; u.hpKnown -> "${u.hp}%"; else -> "" }
+            val hpText = when {
+                u.dead -> "Dead"
+                PadSettings.bool(PadSettings.HP_AMOUNT) && u.hpAmount >= 0 -> amountText(u.hpAmount)
+                u.hpKnown -> "${u.hp}%"
+                else -> ""
+            }
             val pad = dp(12).toFloat()
-            var size = (height * 0.40f).coerceAtMost(dp(21).toFloat())
-            text.textSize = size
+            var size = (height * textScale).coerceAtMost(dp(21).toFloat())
+            // Raid Heal mode: health at half the name's size (its boxes are small).
+            val hpSize = if (chosen == Mode.RAID_HEAL) size * 0.5f else size
+            text.textSize = hpSize
             val hpWidth = text.measureText(hpText)
+            text.textSize = size
             val nameRoom = width - 2 * pad - (if (hpText.isEmpty()) 0f else hpWidth + dp(10))
-            val minSize = dp(13).toFloat()
+            val minSize = dp(if (auras.isNotEmpty()) 11 else 13).toFloat()
             while (size > minSize && text.measureText(u.label) > nameRoom) { size -= 1f; text.textSize = size }
             var name = u.label
             if (text.measureText(name) > nameRoom) {
                 while (name.isNotEmpty() && text.measureText("$name…") > nameRoom) name = name.dropLast(1)
                 name = "$name…"
             }
-            val baseline = height / 2f - (text.descent() + text.ascent()) / 2
+            val baseline = textBottom / 2f - (text.descent() + text.ascent()) / 2
             text.textAlign = Paint.Align.LEFT
             canvas.drawText(name, pad, baseline, text)
-            text.textSize = (height * 0.40f).coerceAtMost(dp(21).toFloat())
+            text.textSize = hpSize
             text.textAlign = Paint.Align.RIGHT
-            canvas.drawText(hpText, width - pad, height / 2f - (text.descent() + text.ascent()) / 2, text)
+            canvas.drawText(hpText, width - pad, textBottom / 2f - (text.descent() + text.ascent()) / 2, text)
+        }
+
+        /** Icons left to right in [rows] rows of [cols] at the bottom, each with a coloured border and its time left. */
+        private fun drawAuras(canvas: Canvas, auras: List<LinkAura>, iconSize: Float, cols: Int, rows: Int, gap: Float) {
+            val now = System.currentTimeMillis()
+            val gridTop = height - dp(3) - rows * iconSize - (rows - 1) * gap
+            var counting = false
+            for ((k, a) in auras.withIndex()) {
+                val row = k / cols
+                if (row >= rows) break
+                val x = dp(8) + (k % cols) * (iconSize + gap)
+                val top = gridTop + row * (iconSize + gap)
+                if (x + iconSize > width - dp(4)) continue
+                iconRect.set(x.toInt(), top.toInt(), (x + iconSize).toInt(), (top + iconSize).toInt())
+                val bmp = IconStore.get(a.icon)
+                if (bmp != null) canvas.drawBitmap(bmp, null, iconRect, null)
+                else { fill.style = Paint.Style.FILL; fill.color = Color.argb(200, 40, 36, 32); canvas.drawRect(iconRect, fill) }
+                fill.style = Paint.Style.STROKE
+                fill.strokeWidth = dp(2).toFloat()
+                fill.color = auraColor(a)
+                iconBorder.set(iconRect)
+                canvas.drawRect(iconBorder, fill)
+                val left = a.secondsLeft(now)
+                if (left >= 0) {
+                    counting = true
+                    val label = if (left < 60) "$left" else if (left < 3600) "${left / 60}m" else "${left / 3600}h"
+                    text.textAlign = Paint.Align.CENTER
+                    text.textSize = iconSize * 0.48f
+                    canvas.drawText(label, x + iconSize / 2, top + iconSize / 2 - (text.descent() + text.ascent()) / 2, text)
+                }
+            }
+            // Timers count down between updates from the game.
+            if (counting) postInvalidateDelayed(500)
         }
 
         @SuppressLint("ClickableViewAccessibility")
@@ -549,7 +662,13 @@ class TargetFramesView(
                     lastTapAt = if (second) 0L else now
                     lastTapSlot = slot
                     // Double tap: the first tap targeted it (or was about to clear it): focus it.
-                    if (second) { removeCallbacks(pendingClear); focusTarget(); return true }
+                    if (second) {
+                        removeCallbacks(pendingClear)
+                        focusTarget()
+                        focusFromTap = true
+                        focusTapAt = now
+                        return true
+                    }
                     // Already your target: tap again to clear the target (a focus stays focused),
                     // once it's clear this isn't the start of a double tap.
                     if (u.isTarget) {

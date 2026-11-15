@@ -12,7 +12,28 @@ import java.nio.ByteOrder
  * (see ViewTransformation.cropBottom); [WowMobileLinkReader] reads it from the game
  * window's image buffer. Format: see WoWMobileLink.lua.
  */
-data class LinkUnit(val slot: Int, val classId: Int, val hp: Int, val flags: Int, val name: String, val seenAt: Long, val plateX: Int = 0, val plateY: Int = 0, val num: Int = 0) {
+/**
+ * One buff or debuff from the addon (protocol 4): [icon] is the hash of the icon's file name
+ * (see IconStore), [kind] its category, dispel type and whether it's a debuff.
+ */
+data class LinkAura(val icon: Int, val time: Int, val kind: Int, val receivedAt: Long) {
+    /** 1 immunity, 2 crowd control, 3 silence, 4 disarm, 5 root, 6 defensive cooldown, 7 your own debuff on an enemy, 0 dispellable. */
+    val category get() = kind and 7
+    /** 0 none, 1 magic, 2 curse, 3 poison, 4 disease. */
+    val dispelType get() = (kind shr 3) and 7
+    val isDebuff get() = kind and 64 != 0
+    val hasDuration get() = time != 255
+    /** Seconds left now, counted down since the packet arrived; -1 without a duration. */
+    fun secondsLeft(now: Long): Int {
+        if (time == 255) return -1
+        val sent = if (time <= 180) time else (time - 180) * 60
+        return (sent - ((now - receivedAt) / 1000).toInt()).coerceAtLeast(0)
+    }
+}
+
+data class LinkUnit(val slot: Int, val classId: Int, val hp: Int, val flags: Int, val name: String, val seenAt: Long, val plateX: Int = 0, val plateY: Int = 0, val num: Int = 0,
+                    /** Current health, -1 unknown (protocol 4). */
+                    val hpAmount: Int = -1, val auras: List<LinkAura> = emptyList()) {
     /** Name as shown: "(2) Wild Boar" when several nearby units share it (same number as on its plate). */
     val label get() = when {
         slot == FOCUS_SLOT -> "Focus: $name"
@@ -45,8 +66,17 @@ object LinkState {
     const val MODE_BATTLEGROUND = 3
     const val MODE_ARENA = 4
 
-    /** Records rotate through packets; a slot not refreshed for this long is gone. */
-    private const val STALE_MS = 1500L
+    /**
+     * Records rotate through packets, as many as fit in each (fewer with buffs/debuffs). A slot
+     * not refreshed for [staleMs] is gone: at least this long, or longer when a full round of
+     * all the records takes longer (big raids and battlegrounds), so boxes don't flicker.
+     */
+    private const val MIN_STALE_MS = 1500L
+    private const val MAX_STALE_MS = 6000L
+    private const val PACKET_MS = 100L
+    @Volatile private var staleMs = MIN_STALE_MS
+    /** Records per packet, smoothed. */
+    private var perPacket = 4f
 
     @Volatile var mode = MODE_WORLD
         private set
@@ -65,9 +95,16 @@ object LinkState {
     fun addListener(l: () -> Unit) { listeners += l }
     fun removeListener(l: () -> Unit) { listeners -= l }
 
-    fun unit(slot: Int): LinkUnit? = units[slot]?.takeIf { System.currentTimeMillis() - it.seenAt < STALE_MS }
+    fun unit(slot: Int): LinkUnit? = units[slot]?.takeIf { System.currentTimeMillis() - it.seenAt < staleMs }
 
-    internal fun apply(rawMode: Int, records: List<LinkUnit>) {
+    /** A quest log packet came in: the link is up, though there are no units in it. */
+    internal fun touch() { lastPacketAt = System.currentTimeMillis(); packets++ }
+
+    internal fun apply(rawMode: Int, records: List<LinkUnit>, total: Int = records.size) {
+        // How long a full round takes: packets per round, twice over for a missed packet or two.
+        if (records.isNotEmpty()) perPacket = perPacket * 0.8f + records.size * 0.2f
+        val rounds = kotlin.math.ceil(total / perPacket.coerceAtLeast(1f)).toLong()
+        staleMs = (rounds * PACKET_MS * 2 + 500).coerceIn(MIN_STALE_MS, MAX_STALE_MS)
         val newMode = rawMode and 127
         cursorOverUi = rawMode and 128 != 0
         packets++
@@ -76,7 +113,7 @@ object LinkState {
         lastPacketAt = System.currentTimeMillis()
         records.forEach { units[it.slot] = it }
         val now = System.currentTimeMillis()
-        units.values.removeAll { now - it.seenAt >= STALE_MS }
+        units.values.removeAll { now - it.seenAt >= staleMs }
         listeners.toList().forEach { it() }
     }
 
@@ -104,7 +141,10 @@ class WowMobileLinkReader(private val xServer: XServer) {
         thread = Thread({
             while (running) {
                 try {
-                    readOnce()?.let { (mode, records) -> main.post { LinkState.apply(mode, records) } }
+                    readOnce()?.let { (header, records) ->
+                        // Mode -1: a quest log packet, already handed to QuestState.
+                        main.post { if (header.first >= 0) LinkState.apply(header.first, records, header.second) else LinkState.touch() }
+                    }
                 } catch (_: Exception) {
                 }
                 try { Thread.sleep(INTERVAL_MS) } catch (_: InterruptedException) { break }
@@ -175,7 +215,8 @@ class WowMobileLinkReader(private val xServer: XServer) {
         android.util.Log.i("WowMobileLink", msg)
     }
 
-    private fun readOnce(): Pair<Int, List<LinkUnit>>? {
+    /** (mode, total records), and this packet's records. */
+    private fun readOnce(): Pair<Pair<Int, Int>, List<LinkUnit>>? {
         val window = findGameWindow()
         if (window == null) { log("no game window"); return null }
         val drawable = window.content ?: run { log("window has no content"); return null }
@@ -225,7 +266,7 @@ class WowMobileLinkReader(private val xServer: XServer) {
         return out
     }
 
-    private fun decode(px: ByteArray, w: Int, redFirst: Boolean): Pair<Int, List<LinkUnit>>? {
+    private fun decode(px: ByteArray, w: Int, redFirst: Boolean): Pair<Pair<Int, Int>, List<LinkUnit>>? {
         val bits = BooleanArray(CELLS * 3)
         for (i in 0 until CELLS) {
             val x = ((i + 0.5f) * w / CELLS).toInt().coerceIn(0, w - 1)
@@ -241,8 +282,12 @@ class WowMobileLinkReader(private val xServer: XServer) {
             bits[i * 3 + 2] = v and 1 != 0
         }
         val bytes = IntArray(bits.size / 8) { n -> (0 until 8).fold(0) { acc, k -> acc * 2 + if (bits[n * 8 + k]) 1 else 0 } }
-        if (bytes.size < 9 || bytes[0] != 'W'.code || bytes[1] != 'M'.code || bytes[2] != 3) return null
+        if (bytes.size >= 8 && bytes[0] == 'W'.code && bytes[1] == 'Q'.code && bytes[2] in 1..2) return decodeQuests(bytes)
+        if (bytes.size >= 10 && bytes[0] == 'W'.code && bytes[1] == 'D'.code && bytes[2] == 1) return decodeQuestDetail(bytes)
+        if (bytes.size < 9 || bytes[0] != 'W'.code || bytes[1] != 'M'.code || bytes[2] !in 3..4) return null
+        val version = bytes[2]
         val mode = bytes[4]
+        val total = bytes[5]
         val count = bytes[6]
         var p = 7
         val now = System.currentTimeMillis()
@@ -255,12 +300,62 @@ class WowMobileLinkReader(private val xServer: XServer) {
             if (p + len > bytes.size) return null
             val name = String(ByteArray(len) { bytes[p + it].toByte() }, Charsets.UTF_8)
             p += len
-            records += LinkUnit(slot, cls, hp, flags, name, now, px, py, num)
+            var amount = -1
+            val auras = ArrayList<LinkAura>()
+            if (version >= 4) {
+                if (p + 4 > bytes.size) return null
+                val raw = (bytes[p] shl 16) or (bytes[p + 1] shl 8) or bytes[p + 2]
+                amount = if (raw == 0xFFFFFF) -1 else raw
+                val auraCount = bytes[p + 3]
+                p += 4
+                if (p + auraCount * 5 > bytes.size) return null
+                repeat(auraCount) {
+                    auras += LinkAura((bytes[p] shl 16) or (bytes[p + 1] shl 8) or bytes[p + 2], bytes[p + 3], bytes[p + 4], now)
+                    p += 5
+                }
+            }
+            records += LinkUnit(slot, cls, hp, flags, name, now, px, py, num, amount, auras)
         }
         if (p + 2 > bytes.size) return null
         val crc = (bytes[p] shl 8) or bytes[p + 1]
         if (crc != crc16(bytes, p)) return null
-        return mode to records
+        return (mode to total) to records
+    }
+
+    /** The quest log strip (see buildQuests in WoWMobileLink.lua): handed to QuestState. */
+    private fun decodeQuests(bytes: IntArray): Pair<Pair<Int, Int>, List<LinkUnit>>? {
+        val version = bytes[2]
+        val total = bytes[4]
+        val count = bytes[5]
+        var p = 6
+        val lines = ArrayList<Pair<Int, QuestLine>>(count)
+        repeat(count) {
+            val head = if (version >= 2) 5 else 4
+            if (p + head > bytes.size) return null
+            val index = bytes[p]; val type = bytes[p + 1]; val flags = bytes[p + 2]
+            val logIndex = if (version >= 2) bytes[p + 3] else 0
+            val len = bytes[p + head - 1]
+            p += head
+            if (p + len > bytes.size) return null
+            lines += index to QuestLine(type, flags, String(ByteArray(len) { bytes[p + it].toByte() }, Charsets.UTF_8), logIndex)
+            p += len
+        }
+        if (p + 2 > bytes.size) return null
+        if ((bytes[p] shl 8) or bytes[p + 1] != crc16(bytes, p)) return null
+        main.post { QuestState.apply(total, lines) }
+        return (-1 to 0) to emptyList()
+    }
+
+    /** A piece of one quest's text (see buildDetail in WoWMobileLink.lua): handed to QuestDetails. */
+    private fun decodeQuestDetail(bytes: IntArray): Pair<Pair<Int, Int>, List<LinkUnit>>? {
+        val logIndex = bytes[4]; val pieces = bytes[5]; val piece = bytes[6]; val len = bytes[7]
+        var p = 8
+        if (p + len + 2 > bytes.size) return null
+        val text = String(ByteArray(len) { bytes[p + it].toByte() }, Charsets.UTF_8)
+        p += len
+        if ((bytes[p] shl 8) or bytes[p + 1] != crc16(bytes, p)) return null
+        main.post { QuestDetails.apply(logIndex, pieces, piece, text) }
+        return (-1 to 0) to emptyList()
     }
 
     private fun crc16(bytes: IntArray, n: Int): Int {

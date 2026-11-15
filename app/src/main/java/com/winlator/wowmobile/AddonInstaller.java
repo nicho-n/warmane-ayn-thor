@@ -158,6 +158,98 @@ public class AddonInstaller {
         }
     }
 
+    /**
+     * The recommended addons pack: the addon folders (with !ThorRecommended, which fills in
+     * their recommended settings in game wherever a player has none) in one zip, attached to
+     * the "recommended-addons" release so it can be updated without an app release.
+     */
+    public static final String RECOMMENDED_URL =
+        "https://github.com/nicho-n/warmane-ayn-thor/releases/download/recommended-addons/recommended-addons.zip";
+
+    public interface Progress { void onProgress(int percent); }
+
+    /**
+     * Downloads the recommended addons pack and installs it: each addon folder in it
+     * replaces the one of the same name in Interface/AddOns. Call [backup] first.
+     */
+    public void installRecommended(Progress progress) throws IOException {
+        File zip = new File(context.getCacheDir(), "recommended-addons.zip");
+        try {
+            download(RECOMMENDED_URL, zip, progress);
+            extractAddonsZip(zip);
+        }
+        finally {
+            zip.delete();
+        }
+    }
+
+    private static void download(String url, File target, Progress progress) throws IOException {
+        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(30000);
+        conn.setInstanceFollowRedirects(true);
+        try {
+            if (conn.getResponseCode() != 200) throw new IOException("HTTP " + conn.getResponseCode());
+            long total = conn.getContentLengthLong();
+            long done = 0;
+            int lastPercent = -1;
+            try (InputStream in = conn.getInputStream(); OutputStream out = new BufferedOutputStream(new FileOutputStream(target))) {
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, count);
+                    done += count;
+                    int percent = total > 0 ? (int) (done * 100 / total) : 0;
+                    if (progress != null && percent != lastPercent) {
+                        lastPercent = percent;
+                        progress.onProgress(percent);
+                    }
+                }
+            }
+        }
+        finally {
+            conn.disconnect();
+        }
+    }
+
+    /** Replaces every top-level folder in [zip] in Interface/AddOns with the zip's copy. */
+    private void extractAddonsZip(File zip) throws IOException {
+        File addOnsDir = addOnsDir();
+        if (!addOnsDir.isDirectory() && !addOnsDir.mkdirs()) throw new IOException("can't create " + addOnsDir);
+        Set<String> folders = new LinkedHashSet<>();
+        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zip))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                String top = entry.getName().split("/")[0];
+                if (!top.isEmpty() && entry.getName().contains("/")) folders.add(top);
+            }
+        }
+        if (folders.isEmpty()) throw new IOException("empty addons pack");
+        for (String folder : folders) {
+            File dir = new File(addOnsDir, folder);
+            if (dir.exists()) FileUtils.delete(dir);
+        }
+        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zip))) {
+            byte[] buffer = new byte[64 * 1024];
+            ZipEntry entry;
+            String base = addOnsDir.getCanonicalPath() + File.separator;
+            while ((entry = zis.getNextEntry()) != null) {
+                File target = new File(addOnsDir, entry.getName());
+                if (!target.getCanonicalPath().startsWith(base)) continue;
+                if (entry.isDirectory()) {
+                    target.mkdirs();
+                    continue;
+                }
+                File parent = target.getParentFile();
+                if (parent != null) parent.mkdirs();
+                try (OutputStream os = new BufferedOutputStream(new FileOutputStream(target))) {
+                    int count;
+                    while ((count = zis.read(buffer)) != -1) os.write(buffer, 0, count);
+                }
+            }
+        }
+    }
+
     /** Moves WoW Imito's addons to Interface/AddOns-disabled (WoW doesn't load them from there). */
     private void disableWowImitoAddons() throws IOException {
         File disabledDir = new File(addOnsDir().getParentFile(), DISABLED_DIR);

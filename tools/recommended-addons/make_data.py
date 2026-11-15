@@ -1,0 +1,127 @@
+"""Builds !ThorRecommended/Data.lua from a player's WoW settings files.
+
+Usage: python make_data.py <SavedVariables dir> <character SavedVariables dir> <chat-cache.txt> <out Data.lua> NAME...
+
+Only addon options are kept: no price databases, character lists, collected quest data
+or player names. NAME... are words (account, characters, realms) that must not appear
+in the result; the script stops if any does.
+"""
+import os
+import re
+import sys
+from collections import OrderedDict
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import wowsv  # noqa: E402
+
+acc_dir, char_dir, chat_file, out_file = sys.argv[1:5]
+forbidden = [n.lower() for n in sys.argv[5:]]
+
+
+def load(path):
+    return wowsv.load(open(path, encoding='utf-8', errors='replace').read())
+
+
+def drop(table, *keys):
+    for k in keys:
+        table.pop(k, None)
+    return table
+
+
+vars_ = OrderedDict()
+addons = OrderedDict()
+
+# Questie: the shared Default profile, minus what it records about play.
+questie = load(os.path.join(acc_dir, 'Questie-335.lua'))['QuestieConfig']
+profile = drop(questie['profiles']['Default'], 'ldbDisplayText', 'dailyResetTime', 'weeklyResetTime')
+vars_['QuestieConfig'] = OrderedDict([('profiles', OrderedDict([('Default', profile)]))])
+addons['Questie-335'] = ['QuestieConfig']
+
+# Leatrix Plus: options only.
+vars_['LeaPlusDB'] = load(os.path.join(acc_dir, 'Leatrix_Plus.lua'))['LeaPlusDB']
+addons['Leatrix_Plus'] = ['LeaPlusDB']
+
+# Auctionator: options, not the price database, history, shopping lists or characters.
+auc = load(os.path.join(acc_dir, 'Auctionator.lua'))
+auc_char = load(os.path.join(char_dir, 'Auctionator.lua'))
+keep = ['AUCTIONATOR_SAVEDVARS', 'AUCTIONATOR_STACKING_PREFS', 'AUCTIONATOR_SCAN_MINLEVEL',
+        'AUCTIONATOR_DB_MAXITEM_AGE', 'AUCTIONATOR_DB_MAXHIST_AGE', 'AUCTIONATOR_DB_MAXHIST_DAYS',
+        'AUCTIONATOR_DC_PAUSE']
+addons['Auctionator'] = []
+for k in keep:
+    if k in auc:
+        vars_[k] = auc[k]
+        addons['Auctionator'].append(k)
+for k, v in auc_char.items():
+    vars_[k] = v
+    addons['Auctionator'].append(k)
+
+# GearScoreLite: display options.
+vars_['GS_Settings'] = load(os.path.join(acc_dir, 'GearScoreLite.lua'))['GS_Settings']
+addons['GearScoreLite'] = ['GS_Settings']
+
+# BattlegroundTargets: layout options, not the healers list (player names).
+vars_['BattlegroundTargets_Options'] = load(os.path.join(acc_dir, 'BattlegroundTargets.lua'))['BattlegroundTargets_Options']
+addons['BattlegroundTargets'] = ['BattlegroundTargets_Options']
+
+# Bagnon: the character's window settings (position, scale, broker display).
+vars_['BagnonGlobalSettings'] = load(os.path.join(acc_dir, 'Bagnon.lua'))['BagnonGlobalSettings']
+vars_['BagnonFrameSettings'] = load(os.path.join(char_dir, 'Bagnon.lua'))['BagnonFrameSettings']
+addons['Bagnon'] = ['BagnonGlobalSettings', 'BagnonFrameSettings']
+
+# SexyMap: the character's profile in every namespace, renamed "Recommended".
+sexy = load(os.path.join(acc_dir, 'SexyMap.lua'))['SexyMapDB']
+own = list(sexy.get('profileKeys', {}).values())
+own = own[0] if own else None
+rec = OrderedDict([('namespaces', OrderedDict())])
+for name, ns in sexy.get('namespaces', {}).items():
+    prof = ns.get('profiles', {}).get(own) if own else None
+    rec['namespaces'][name] = OrderedDict([('profiles', OrderedDict([('Recommended', prof)]))]) if prof else OrderedDict()
+if own and own in sexy.get('profiles', {}):
+    rec['profiles'] = OrderedDict([('Recommended', sexy['profiles'][own])])
+vars_['SexyMapDB'] = rec
+addons['SexyMap'] = ['SexyMapDB']
+
+# ShadowedUnitFrames: the Default profile only (raid frames, also in party).
+suf = load(os.path.join(acc_dir, 'ShadowedUnitFrames.lua'))['ShadowedUFDB']
+vars_['ShadowedUFDB'] = OrderedDict([('profiles', OrderedDict([('Default', suf['profiles']['Default'])]))])
+addons['ShadowedUnitFrames'] = ['ShadowedUFDB']
+
+# Chat: the General window (WINDOW 1) from chat-cache.txt.
+chat = OrderedDict()
+window = None
+for line in open(chat_file, encoding='utf-8', errors='replace'):
+    parts = line.split()
+    if not parts:
+        continue
+    if parts[0] == 'WINDOW':
+        window = parts[1]
+    elif window == '1':
+        if parts[0] == 'SIZE':
+            chat['fontSize'] = int(parts[1])
+        elif parts[0] == 'COLOR':
+            r, g, b, a = (int(x) for x in parts[1:5])
+            chat['color'] = [r / 255.0, g / 255.0, b / 255.0]
+            chat['alpha'] = a / 255.0
+        elif parts[0] == 'POSITION' and parts[1] == 'BOTTOMLEFT':
+            chat['x'], chat['y'] = float(parts[2]), float(parts[3])
+        elif parts[0] == 'DIMENSIONS':
+            chat['width'], chat['height'] = float(parts[1]), float(parts[2])
+
+data = OrderedDict([('addons', OrderedDict((k, OrderedDict((i + 1, v) for i, v in enumerate(lst))) for k, lst in addons.items())),
+                    ('vars', vars_), ('chat', chat)])
+for k in ('color',):
+    if k in chat:
+        chat[k] = OrderedDict((i + 1, v) for i, v in enumerate(chat[k]))
+
+text = ('-- Generated by make_data.py from the recommended settings. Options only: no player data.\n'
+        + wowsv.dump(OrderedDict([('ThorRecommendedData', data)])))
+low = text.lower()
+found = [n for n in forbidden if n and n in low]
+if found:
+    sys.exit('refusing to write: found %s' % ', '.join(found))
+open(out_file, 'w', encoding='utf-8', newline='\n').write(text)
+print('wrote %s (%d bytes)' % (out_file, len(text)))
+for addon, lst in addons.items():
+    print('  %-20s %s' % (addon, ', '.join(lst)))
+print('  chat', dict(chat))

@@ -1,0 +1,9 @@
+## Interface: 30300
+## Title: Thor Recommended Settings
+## Notes: Recommended settings for the Warmane Ayn Thor app's recommended addons. Fills in each addon's settings only where it has none yet.
+## Author: nicho-n
+## Version: 1.0
+## SavedVariablesPerCharacter: ThorRecommendedChar
+
+Data.lua
+Core.lua

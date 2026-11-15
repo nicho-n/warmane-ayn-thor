@@ -27,6 +27,9 @@ import com.winlator.R
  * and below it either the 12 action buttons or a laptop-style trackpad. The keyboard is the app's own
  * on-screen keyboard, drawn over the bottom of whichever is showing.
  */
+/** wow-mobile: the edge of the bottom row's buttons that aren't selected (the selected one is gold). */
+private val BOTTOM_GREY = 0xFF4A4A4A.toInt()
+
 class ExternalActionPad(
     context: Context,
     private val xServer: XServer,
@@ -186,7 +189,8 @@ class ExternalActionPad(
                 styleButton(keyboardButton, true)
             } else setKeyboard(keyboardView.visibility != View.VISIBLE)
         }
-        settingsButton = circleButton(R.drawable.icon_settings, "Settings") { setSettings(!settingsOpen) }
+        // wow-mobile: the gear opens a small menu (Open settings, Reload); with Settings open it closes them.
+        settingsButton = circleButton(R.drawable.icon_settings, "Settings") { if (settingsOpen) setSettings(false) else showSettingsMenu() }
         settingsView = ExternalPadSettingsView(context, theme).apply {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             visibility = View.GONE
@@ -354,7 +358,9 @@ class ExternalActionPad(
         val mainVisible = padView.visibility == View.VISIBLE
         pageTabs.forEachIndexed { i, tab ->
             val active = mainVisible && i == currentPage && !PadSettings.bool(PadSettings.SIDE_BY_SIDE)
-            tab.background = theme.buttonBackground(density, 12f, active, muted = true)
+            // The selected tab in gold; the rest with a dark grey edge.
+            tab.background = if (active) theme.buttonBackground(density, 12f, true, muted = true)
+            else theme.buttonBackground(density, 12f, false, accent = BOTTOM_GREY)
             tab.setTextColor(if (active) theme.textPressed else theme.text)
         }
     }
@@ -816,6 +822,51 @@ class ExternalActionPad(
         }
     }
 
+    /** A small menu above the gear: Open settings, Reload, Log out and Exit game (/reload, /logout, /quit in the game). */
+    private fun showSettingsMenu() {
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        val menu = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.rgb(24, 21, 18))
+                cornerRadius = 12 * density
+                setStroke(dp(2), theme.border)
+            }
+        }
+        val popup = android.widget.PopupWindow(menu, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        fun item(label: String, onClick: () -> Unit) = android.widget.TextView(context).apply {
+            text = label
+            setTextColor(theme.text)
+            typeface = theme.typeface
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+            gravity = android.view.Gravity.CENTER
+            minWidth = dp(170)
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = theme.buttonBackground(density, 10f, false)
+            setOnClickListener {
+                PadSettings.haptic(this)
+                popup.dismiss()
+                onClick()
+            }
+        }
+        menu.addView(item("Open settings") { setSettings(true) })
+        menu.addView(item("Reload") { SlashTyper.type(xServer, "/reload", { suspendModifiers() }, { resumeModifiers(it) }) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        // Back to the character screen (WoW's own 20-second countdown applies outside rest areas).
+        menu.addView(item("Log out") { SlashTyper.type(xServer, "/logout", { suspendModifiers() }, { resumeModifiers(it) }) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        // Quits WoW the proper way, so it saves the settings files (closing the app doesn't).
+        menu.addView(item("Exit game") { SlashTyper.type(xServer, "/quit", { suspendModifiers() }, { resumeModifiers(it) }) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        menu.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        popup.isOutsideTouchable = true
+        popup.elevation = 8 * density
+        // Above the gear, its right edge lined up with the gear's.
+        popup.showAsDropDown(settingsButton, settingsButton.width - menu.measuredWidth, -(settingsButton.height + menu.measuredHeight + dp(6)))
+    }
+
     private fun circleButton(@DrawableRes icon: Int, label: String, onClick: () -> Unit): ImageButton {
         return ImageButton(context).apply {
             // Fixed-width icon buttons; the page tabs take the rest of the header.
@@ -834,7 +885,8 @@ class ExternalActionPad(
     }
 
     private fun styleButton(button: ImageButton, active: Boolean) {
-        button.background = theme.buttonBackground(density, 12f, active, muted = true)
+        button.background = if (active) theme.buttonBackground(density, 12f, true, muted = true)
+        else theme.buttonBackground(density, 12f, false, accent = BOTTOM_GREY)
         button.setColorFilter(if (active) theme.textPressed else theme.text)
     }
 }

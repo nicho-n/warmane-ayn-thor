@@ -87,6 +87,10 @@ object PadSettings {
     const val FORWARD_FOLLOWS_CAMERA = "forward_follows_camera"
     /** ThorControls adds a sort button next to the search button in Bagnon's bag window. */
     const val BAG_SORT_BUTTON = "bag_sort_button"
+    /** Target page: health as an amount ("12.3k") instead of a percent. */
+    const val HP_AMOUNT = "hp_amount"
+    /** Target page: a row of important buffs/debuffs with timers along the bottom of each box. */
+    const val SHOW_AURAS = "show_auras"
     /** Leaving pointer mode (Back) puts the cursor back in the middle of the screen. */
     const val POINTER_CENTER = "pointer_center"
     /** The Target page's focus row (Clear Focus / Set Focus or your focus). */
@@ -183,6 +187,8 @@ object PadSettings {
         FORWARD_FOLLOWS_CAMERA to false,
         BAG_SORT_BUTTON to false,
         POINTER_CENTER to true,
+        HP_AMOUNT to false,
+        SHOW_AURAS to true,
         XP_SHOW to true,
         XP_TEXT to false,
         XP_WIDTH to 100,

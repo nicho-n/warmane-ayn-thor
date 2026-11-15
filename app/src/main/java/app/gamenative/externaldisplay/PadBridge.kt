@@ -64,6 +64,10 @@ object PadBridge {
     @Volatile
     private var targetPageShown = false
 
+    /** wow-mobile: true while the Quests page is showing (the link then carries the quest log). */
+    @Volatile
+    var questPageShown = false
+
     fun setTargetPageVisible(visible: Boolean) {
         if (visible == targetPageShown) return
         targetPageShown = visible

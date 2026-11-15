@@ -439,15 +439,37 @@ public class WowMobileActivity extends AppCompatActivity {
         String message = getString(R.string.wow_addons_message, list.toString());
         java.util.List<String> moved = installer.wowImitoAddonsToDisable();
         if (!moved.isEmpty()) message += "\n\n" + getString(R.string.wow_addons_imito, android.text.TextUtils.join(", ", moved), AddonInstaller.DISABLED_DIR);
+        // The message, then the "recommended addons" checkbox (off unless ticked) and its note.
+        float density = getResources().getDisplayMetrics().density;
+        int pad = (int) (20 * density);
+        android.widget.LinearLayout body = new android.widget.LinearLayout(this);
+        body.setOrientation(android.widget.LinearLayout.VERTICAL);
+        body.setPadding(pad, (int) (12 * density), pad, 0);
+        android.widget.TextView text = new android.widget.TextView(this);
+        text.setText(message);
+        text.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
+        body.addView(text);
+        android.widget.CheckBox recommended = new android.widget.CheckBox(this);
+        recommended.setText(R.string.wow_addons_recommended);
+        recommended.setPadding(0, (int) (8 * density), 0, 0);
+        body.addView(recommended);
+        android.widget.TextView note = new android.widget.TextView(this);
+        note.setText(R.string.wow_addons_recommended_note);
+        note.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+        note.setAlpha(0.75f);
+        body.addView(note);
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.addView(body);
+
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle(R.string.wow_addons_title)
-            .setMessage(message)
-            .setPositiveButton(R.string.wow_addons_continue, (d, w) -> installAddons(installer))
+            .setView(scroll)
+            .setPositiveButton(R.string.wow_addons_continue, (d, w) -> installAddons(installer, recommended.isChecked()))
             .setNegativeButton(R.string.cancel, null)
             .show();
     }
 
-    private void installAddons(AddonInstaller installer) {
+    private void installAddons(AddonInstaller installer, boolean withRecommended) {
         preloaderDialog.show(R.string.wow_addons_installing);
         Executors.newSingleThreadExecutor().execute(() -> {
             String message;
@@ -455,6 +477,15 @@ public class WowMobileActivity extends AppCompatActivity {
                 File backup = installer.backup();
                 installer.install();
                 message = backup != null ? getString(R.string.wow_addons_done_backup, backup.getName()) : getString(R.string.wow_addons_done);
+                if (withRecommended) {
+                    try {
+                        installer.installRecommended(percent -> runOnUiThread(() ->
+                            preloaderDialog.setText(getString(R.string.wow_addons_downloading, percent))));
+                    }
+                    catch (Exception e) {
+                        message = getString(R.string.wow_addons_recommended_failed);
+                    }
+                }
             }
             catch (Exception e) {
                 message = getString(R.string.wow_addons_failed);

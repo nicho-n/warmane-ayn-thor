@@ -685,6 +685,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             app.gamenative.externaldisplay.XpBarSync.INSTANCE.setAddOnsDir(addOns);
             app.gamenative.externaldisplay.XpBarSync.INSTANCE.write();
         }
+        // Spell icons for the Target page's buffs/debuffs, read from the game's own files.
+        if (gamePath != null) {
+            app.gamenative.externaldisplay.IconStore.INSTANCE.init(new com.winlator.wowmobile.GameFolder(gamePath).root, getFilesDir());
+        }
         // Only with an account name in Config.wtf (Play puts the one from WoW Settings there):
         // without one the login screen's focus is in the account name box, and the password
         // would be typed there in plain sight.
@@ -920,11 +924,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     /**
      * The WoWMobileLink addon's open key, which also tells it what Nearby includes besides
      * enemies (see OPEN_KEYS in WoWMobileLink.lua): K friendly players only, M neither,
-     * N both, B friendly NPCs only.
+     * N both, B friendly NPCs only; Home, End, Page Up, Page Down the same with buffs/debuffs.
      */
     private com.winlator.xserver.XKeycode linkOpenKey() {
+        // The Quests page: the link carries the quest log instead.
+        if (app.gamenative.externaldisplay.PadBridge.INSTANCE.getQuestPageShown()) return com.winlator.xserver.XKeycode.KEY_INSERT;
         boolean npcs = app.gamenative.externaldisplay.PadSettings.INSTANCE.bool(app.gamenative.externaldisplay.PadSettings.NEARBY_FRIENDLY_NPC);
         boolean players = app.gamenative.externaldisplay.PadSettings.INSTANCE.bool(app.gamenative.externaldisplay.PadSettings.NEARBY_FRIENDLY_PLAYER);
+        boolean auras = app.gamenative.externaldisplay.PadSettings.INSTANCE.bool(app.gamenative.externaldisplay.PadSettings.SHOW_AURAS);
+        if (auras) {
+            if (npcs) return players ? com.winlator.xserver.XKeycode.KEY_PRIOR : com.winlator.xserver.XKeycode.KEY_NEXT;
+            return players ? com.winlator.xserver.XKeycode.KEY_HOME : com.winlator.xserver.XKeycode.KEY_END;
+        }
         if (npcs) return players ? com.winlator.xserver.XKeycode.KEY_N : com.winlator.xserver.XKeycode.KEY_B;
         return players ? com.winlator.xserver.XKeycode.KEY_K : com.winlator.xserver.XKeycode.KEY_M;
     }

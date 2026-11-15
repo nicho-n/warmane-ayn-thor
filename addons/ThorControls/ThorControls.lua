@@ -8,7 +8,8 @@
 --  2. Camera: the right stick holds NUMPADDIVIDE while it moves the mouse; that key
 --     looks around (mouselook) and never clicks, so right-click stays a normal click.
 --  3. Pet bar: hides Blizzard's default pet bar (ConsolePort has its own).
---  4. XP bar: lifts ConsolePort's XP/reputation bar off the screen edge.
+--  4. XP bar: lifts ConsolePort's XP/reputation bar off the screen edge; a right-click on it
+--     opens Warmane's XP rate menu (which sits on WoW's own, hidden, XP bar).
 --  5. Triggers: hides the big L2/R2 icons on the ConsolePort bar (toggleable).
 --  6. Cursor trail: hides ConsolePort's controller icon next to the pointer.
 --  8. Cast bar: WoW's own cast bar instead of ConsolePortBar's restyled one.
@@ -427,6 +428,36 @@ local function relayoutWatchBars()
     if container and container.UpdateBarsShown then container:UpdateBarsShown() end
 end
 
+-- Warmane's XP rate menu (x0.5 / x1 / x3 / x5 / x7) opens on a right-click on WoW's own XP
+-- bar, MainMenuExpBar, which section 11 hides; ConsolePort's XP bar is the one on screen. A
+-- right-click on it runs whatever mouse handler Warmane has put on MainMenuExpBar, looked up
+-- at click time.
+local function openServerXpMenu()
+    local blizz = MainMenuExpBar
+    if blizz then
+        for _, script in ipairs({ "OnMouseUp", "OnMouseDown", "OnClick" }) do
+            local handler = blizz:HasScript(script) and blizz:GetScript(script)
+            if handler then
+                handler(blizz, "RightButton")
+                return
+            end
+        end
+    end
+    msg("This realm has no XP rate menu on the XP bar.")
+end
+
+local function hookXpRightClick(container)
+    for _, bar in ipairs(container.bars or {}) do
+        if not bar.thorXpClick and CPExpBarMixin and bar.UpdateTick == CPExpBarMixin.UpdateTick then
+            bar.thorXpClick = true
+            bar:EnableMouse(true)
+            bar:HookScript("OnMouseUp", function(_, button)
+                if button == "RightButton" then openServerXpMenu() end
+            end)
+        end
+    end
+end
+
 local function hookWatchBars()
     local container = ConsolePortBarWatchBars
     if not container or container.thorHooked or not container.LayoutBar then return end
@@ -443,6 +474,7 @@ local function hookWatchBars()
     hooksecurefunc(container, "LayoutBar", function(self, bar, width, isTopBar, isDouble)
         shortenBar(self, bar, width, isDouble)
     end)
+    hookXpRightClick(container)
     relayoutWatchBars()
 end
 
