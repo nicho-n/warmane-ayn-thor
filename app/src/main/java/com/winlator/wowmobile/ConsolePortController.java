@@ -568,8 +568,14 @@ public class ConsolePortController {
 
     private void setPointerMode(boolean on) {
         // Camera rotate mode only pauses meanwhile: R3 still ends it and puts the camera back.
+        boolean wasOn = pointerMode;
         pointerMode = on;
         if (on) releaseCamera();
+        // "Cursor back to the middle after pointer mode" setting (on by default).
+        if (wasOn && !on && app.gamenative.externaldisplay.PadSettings.INSTANCE.boolValue(app.gamenative.externaldisplay.PadSettings.POINTER_CENTER)) {
+            pointerPlaced = true;
+            xServer.injectPointerMove(xServer.screenInfo.width / 2, xServer.screenInfo.height / 2);
+        }
         if (pointerModeListener != null) pointerModeListener.onPointerModeChanged(on);
     }
 

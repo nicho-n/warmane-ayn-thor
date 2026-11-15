@@ -85,6 +85,10 @@ object PadSettings {
     const val STRAFE_FREE_CAMERA = "strafe_free_camera"
     /** In R3 camera rotate mode, holding the stick straight forward ends it and turns you toward where the camera looks. */
     const val FORWARD_FOLLOWS_CAMERA = "forward_follows_camera"
+    /** ThorControls adds a sort button next to the search button in Bagnon's bag window. */
+    const val BAG_SORT_BUTTON = "bag_sort_button"
+    /** Leaving pointer mode (Back) puts the cursor back in the middle of the screen. */
+    const val POINTER_CENTER = "pointer_center"
     /** The Target page's focus row (Clear Focus / Set Focus or your focus). */
     const val FOCUS_BAR = "focus_bar"
     /** XP bar (ThorControls addon, see XpBarSync): shown, numbers on it, width (% of D-pad Left to A), height, offsets. */
@@ -177,6 +181,8 @@ object PadSettings {
         TURN_AROUND to false,
         STRAFE_FREE_CAMERA to false,
         FORWARD_FOLLOWS_CAMERA to false,
+        BAG_SORT_BUTTON to false,
+        POINTER_CENTER to true,
         XP_SHOW to true,
         XP_TEXT to false,
         XP_WIDTH to 100,
@@ -369,6 +375,7 @@ object PadSettings {
         prefs?.edit()?.putBoolean(key, value)?.apply()
         version++
         if (key in XP_KEYS) XpBarSync.changed()
+        if (key == BAG_SORT_BUTTON) XpBarSync.changed(sortButton = true)
     }
 
     fun set(key: String, value: Int) {

@@ -72,6 +72,12 @@ class ExternalPadSettingsView(
             addView(toggleRow(listOf("Nearby shows friendly players" to PadSettings.NEARBY_FRIENDLY_PLAYER)))
             addView(toggleRow(listOf("Cursor back to screen centre after a target tap" to PadSettings.TARGET_CURSOR_CENTER)))
         }
+        section("Interface", collapsible = true) {
+            addView(toggleRow(listOf("Sort button in Bagnon" to PadSettings.BAG_SORT_BUTTON)))
+            addView(note("Adds a sort button next to the search button in Bagnon's bag window (and bank window). Hearthstone first, then materials, food & drink, other consumables and the rest; grey junk last. Changes show in the game right away."))
+            addView(toggleRow(listOf("Cursor back to the middle after pointer mode" to PadSettings.POINTER_CENTER)))
+            addView(note("When you leave pointer mode (Back), the cursor jumps back to the middle of the screen instead of staying where you left it."))
+        }
         section("Pad layout", collapsible = true) {
             addView(cycleRow("Tab bar", PadSettings.TAB_POS, listOf("Top", "Bottom")))
             addView(toggleRow(listOf("Swap sides (pages on the right)" to PadSettings.SWAP_SIDES)))
@@ -634,15 +640,53 @@ class ExternalPadSettingsView(
         }
     }
 
+    /** On/off settings as checkboxes, side by side when there are several. */
     private fun toggleRow(items: List<Pair<String, String>>): LinearLayout = rowOf(
-        *items.map { (text, key) ->
-            button(text, active = PadSettings.bool(key)) { b ->
-                val on = !PadSettings.bool(key)
-                PadSettings.set(key, on)
-                style(b, on)
-            }
-        }.toTypedArray(),
+        *items.map { (text, key) -> checkBox(text, key) }.toTypedArray(),
     )
+
+    /** A gold-edged box (filled gold with a check mark when on) and its label; tapping either toggles it. */
+    private fun checkBox(text: String, key: String): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(36)
+        setPadding(dp(6), dp(4), dp(6), dp(4))
+        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(3), dp(1), dp(3), dp(1)) }
+        val box = TextView(context).apply {
+            gravity = Gravity.CENTER
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = theme.typeface
+            setTextColor(theme.keyBottom)
+            includeFontPadding = false
+            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(10) }
+        }
+        fun paint(on: Boolean) {
+            box.text = if (on) "✓" else ""
+            box.background = GradientDrawable().apply {
+                cornerRadius = 4 * density
+                setColor(if (on) theme.border else theme.keyBottom)
+                setStroke(dp(2), theme.border)
+            }
+        }
+        paint(PadSettings.bool(key))
+        addView(box)
+        addView(
+            TextView(context).apply {
+                this.text = text
+                setTextColor(theme.text)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                typeface = theme.typeface
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            },
+        )
+        isClickable = true
+        setOnClickListener {
+            PadSettings.haptic(this)
+            val on = !PadSettings.bool(key)
+            PadSettings.set(key, on)
+            paint(on)
+        }
+    }
 
     private fun cycleRow(title: String, key: String, options: List<String>): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL

@@ -127,7 +127,7 @@ local function migrateRunWalk()
     end
 end
 
-local defaults = { petbar = true, xpShow = true, xpText = false, xpWidth = 100, xpHeight = 11, xpX = 0, xpY = 0, hideTriggers = true, hideTrail = true, defaultCastBar = true, hideGcd = false }
+local defaults = { petbar = true, xpShow = true, xpText = false, xpWidth = 100, xpHeight = 11, xpX = 0, xpY = 0, hideTriggers = true, hideTrail = true, defaultCastBar = true, hideGcd = false, petRingLeft = true, petRingScale = 80, bagSort = false, mapArrowScale = 150 }
 local db
 local pending = {}
 local events = CreateFrame("Frame")
@@ -830,9 +830,301 @@ local function hideUtilityModel()
 end
 
 ---------------------------------------------------------------------------
+-- 15. Pet ring: ConsolePort's pet portrait (and the ring of pet buttons around it) in
+--     the bottom left corner of the screen instead of above the right end of the bar, a
+--     bit smaller, with the lowest and leftmost pet buttons touching the screen edges.
+--     /thor petring left|right (right: bottom right corner), /thor petringscale 50-150.
+---------------------------------------------------------------------------
+-- From ConsolePortBar's Pet.lua: the portrait is 64 x 64; eight 40 px buttons sit on a
+-- 60 px circle around its centre, moved 8 down. So the lowest button's bottom edge is
+-- 60 + 8 + 20 = 88 below the portrait's centre, and the outermost buttons' sides are
+-- 60 + 20 = 80 to its left and right (in the pet's own, unscaled units).
+local PET_HALF, PET_RING_SIDE, PET_RING_LOW = 32, 80, 88
+
+local function applyPetRing()
+    local pet = _G.ConsolePortBarPet
+    if not pet or not db then return end
+    if InCombatLockdown() then pending.petRing = true; return end
+    pending.petRing = nil
+    pet:SetScale((db.petRingScale or 80) / 100)
+    pet:ClearAllPoints()
+    -- Offsets are in the pet's own (scaled) units, so the ring fits the corner at any size.
+    local x, y = PET_RING_SIDE - PET_HALF, PET_RING_LOW - PET_HALF
+    if db.petRingLeft then
+        pet:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x, y)
+    else
+        pet:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -x, y)
+    end
+end
+
+---------------------------------------------------------------------------
+-- 16. Bag sort: a sort button next to the search button in Bagnon's bag window (and bank
+--     window while the bank is open), when the app's Settings > Interface > Sort button
+--     in Bagnon is on (off by default; ThorControlsApp.bagSort, /thor sortbutton on|off).
+--     WoW 3.3.5 has no sort of its own, so items are swapped one at a time, each after
+--     the last swap's slots unlock. Hearthstone first, then materials, food & drink, other
+--     consumables and the other item types (see itemRank), each by subtype, quality, item
+--     level and name; grey junk last; empty slots at the end. Profession bags, quivers and
+--     soul bags are left alone. Stops in combat. /thor sort, /thor sort bank.
+---------------------------------------------------------------------------
+-- Materials (Trade Goods) first, then food & drink, then the other consumables, then the
+-- rest. Item types come localized from the auction house lists; 3.3.5 order: Weapon,
+-- Armor, Container, Consumable, Glyph, Trade Goods, Projectile, Quiver, Recipe, Gem,
+-- Miscellaneous, Quest. Consumable subtype 1 is Food & Drink.
+local classRanks, consumableClass, foodSubclass
+local function itemRank(item)
+    if not classRanks then
+        classRanks = {}
+        local classes = { GetAuctionItemClasses() }
+        consumableClass = classes[4]
+        foodSubclass = (GetAuctionItemSubClasses(4))
+        local rank = 0
+        for _, i in ipairs({ 6, 4, 10, 5, 9, 1, 2, 3, 7, 8, 12, 11 }) do
+            rank = rank + 1
+            if i == 4 then rank = rank + 1 end -- food & drink takes the rank before
+            if classes[i] then classRanks[classes[i]] = rank end
+        end
+    end
+    local rank = classRanks[item.class] or 99
+    if item.class == consumableClass and item.sub == foodSubclass then rank = rank - 1 end
+    return rank
+end
+
+local function slotItem(bag, slot)
+    local link = GetContainerItemLink(bag, slot)
+    if not link then return false end
+    local name, _, quality, ilvl, _, class, sub = GetItemInfo(link)
+    return { link = link, id = tonumber(link:match("item:(%-?%d+)")) or 0, name = name or link,
+        quality = quality or 1, ilvl = ilvl or 0, class = class or "", sub = sub or "" }
+end
+
+local HEARTHSTONE = 6948
+local function sortsBefore(a, b)
+    local ah, bh = a.id == HEARTHSTONE, b.id == HEARTHSTONE
+    if ah ~= bh then return ah end
+    local aj, bj = a.quality == 0, b.quality == 0
+    if aj ~= bj then return bj end
+    local ac, bc = itemRank(a), itemRank(b)
+    if ac ~= bc then return ac < bc end
+    if a.sub ~= b.sub then return a.sub < b.sub end
+    if a.quality ~= b.quality then return a.quality > b.quality end
+    if a.ilvl ~= b.ilvl then return a.ilvl > b.ilvl end
+    if a.name ~= b.name then return a.name < b.name end
+    if a.id ~= b.id then return a.id < b.id end
+    return a.link < b.link
+end
+
+local bankOpen
+local function sortBags(which)
+    if which == "bank" then
+        local bags = { -1 }
+        for i = 1, GetNumBankSlots() do bags[#bags + 1] = NUM_BAG_SLOTS + i end
+        return bags
+    end
+    return { 0, 1, 2, 3, 4 }
+end
+
+-- The swaps that put the bags in order. Items with the same link count as equal, so two
+-- stacks of one item are never swapped (that would merge them instead).
+local function planSort(bags)
+    local slots, cur = {}, {}
+    for _, bag in ipairs(bags) do
+        local _, bagType = GetContainerNumFreeSlots(bag)
+        if (bagType or 0) == 0 then
+            for slot = 1, GetContainerNumSlots(bag) do
+                slots[#slots + 1] = { bag = bag, slot = slot }
+                cur[#slots] = slotItem(bag, slot)
+            end
+        end
+    end
+    local sorted = {}
+    for i = 1, #slots do if cur[i] then sorted[#sorted + 1] = cur[i] end end
+    table.sort(sorted, sortsBefore)
+    local moves = {}
+    for p = 1, #sorted do
+        local want = sorted[p]
+        if not (cur[p] and cur[p].link == want.link) then
+            for q = p + 1, #slots do
+                if cur[q] and cur[q].link == want.link then
+                    moves[#moves + 1] = { from = slots[q], to = slots[p], link = want.link }
+                    cur[p], cur[q] = cur[q], cur[p]
+                    break
+                end
+            end
+        end
+    end
+    return moves
+end
+
+local sortJob
+local sortRunner = CreateFrame("Frame")
+sortRunner:Hide()
+
+local function sortButtons(enabled)
+    for _, name in ipairs({ "BagnonFrameinventory", "BagnonFramebank" }) do
+        local b = _G[name] and _G[name].thorSort
+        if b then
+            b.icon:SetDesaturated(not enabled)
+            if enabled then b:Enable() else b:Disable() end
+        end
+    end
+end
+
+local function stopSort(reason)
+    if not sortJob then return end
+    sortJob = nil
+    sortRunner:Hide()
+    if CursorHasItem() then ClearCursor() end
+    sortButtons(true)
+    if reason then msg(reason) end
+end
+
+local function slotLocked(s)
+    local _, _, locked = GetContainerItemInfo(s.bag, s.slot)
+    return locked
+end
+
+sortRunner:SetScript("OnUpdate", function(self, elapsed)
+    local job = sortJob
+    if not job then self:Hide(); return end
+    if InCombatLockdown() then stopSort("Sorting stopped: you entered combat."); return end
+    if job.which == "bank" and not bankOpen then stopSort("Sorting stopped: the bank closed."); return end
+    local last = job.last
+    if last and (slotLocked(last.from) or slotLocked(last.to)) then
+        job.waited = job.waited + elapsed
+        if job.waited > 5 then stopSort("Sorting stopped: the game didn't answer.") end
+        return
+    end
+    if CursorHasItem() then
+        job.waited = job.waited + elapsed
+        if job.waited > 1 then stopSort("Sorting stopped: something is on the cursor.") end
+        return
+    end
+    local m = job.moves[job.i]
+    if not m or GetContainerItemLink(m.from.bag, m.from.slot) ~= m.link then
+        -- Done, or the bags changed underneath (loot, a merged stack): plan again.
+        job.passes = job.passes + 1
+        job.moves, job.i = planSort(job.bags), 1
+        if #job.moves == 0 then stopSort(); return end
+        if job.passes > 6 then stopSort("Sorting stopped: the bags kept changing."); return end
+        return
+    end
+    PickupContainerItem(m.from.bag, m.from.slot)
+    PickupContainerItem(m.to.bag, m.to.slot)
+    if CursorHasItem() then ClearCursor() end
+    job.last, job.i, job.waited = m, job.i + 1, 0
+end)
+
+local function startSort(which)
+    if sortJob then return end
+    if InCombatLockdown() then msg("Can't sort bags in combat."); return end
+    if which == "bank" and not bankOpen then msg("Open the bank to sort it."); return end
+    if CursorHasItem() then ClearCursor() end
+    local bags = sortBags(which)
+    sortJob = { which = which, bags = bags, moves = planSort(bags), i = 1, passes = 0, waited = 0 }
+    if #sortJob.moves == 0 then sortJob = nil; return end
+    sortButtons(false)
+    sortRunner:Show()
+end
+
+-- A button like Bagnon's search toggle (same size and frame), with a bag icon.
+local function makeSortButton(frame, which)
+    local b = CreateFrame("Button", frame:GetName() .. "ThorSort", frame)
+    b:SetWidth(20)
+    b:SetHeight(20)
+    b:RegisterForClicks("AnyUp")
+    local nt = b:CreateTexture()
+    nt:SetTexture([[Interface\Buttons\UI-Quickslot2]])
+    nt:SetWidth(64 * 20 / 36)
+    nt:SetHeight(64 * 20 / 36)
+    nt:SetPoint("CENTER", 0, -1)
+    b:SetNormalTexture(nt)
+    local pt = b:CreateTexture()
+    pt:SetTexture([[Interface\Buttons\UI-Quickslot-Depress]])
+    pt:SetAllPoints(b)
+    b:SetPushedTexture(pt)
+    local ht = b:CreateTexture()
+    ht:SetTexture([[Interface\Buttons\ButtonHilight-Square]])
+    ht:SetAllPoints(b)
+    b:SetHighlightTexture(ht)
+    b.icon = b:CreateTexture()
+    b.icon:SetAllPoints(b)
+    b.icon:SetTexture([[Interface\Icons\INV_Misc_Bag_10]])
+    b:SetScript("OnClick", function() startSort(which) end)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText(which == "bank" and "Sort bank" or "Sort bags")
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return b
+end
+
+-- Bagnon lays out its menu buttons (player, bags, search) left to right and puts the title
+-- after the last one. After it has, add the sort button to that row, right of search.
+-- Windows already laid out (before the hook, or before the setting changed): again.
+local function relayoutBagnon()
+    for _, id in ipairs({ "inventory", "bank" }) do
+        local f = _G["BagnonFrame" .. id]
+        if f and f.Layout then f:Layout() end
+    end
+end
+
+local bagnonHooked
+local function hookBagnon()
+    if bagnonHooked or not LibStub then return end
+    local ace = LibStub("AceAddon-3.0", true)
+    local bagnon = ace and ace:GetAddon("Bagnon", true)
+    if not bagnon or not bagnon.Frame then return end
+    bagnonHooked = true
+    hooksecurefunc(bagnon.Frame, "PlaceMenuButtons", function(self)
+        local id = self.GetFrameID and self:GetFrameID()
+        local which = (id == "inventory" and "bags") or (id == "bank" and "bank")
+        local list = self.menuButtons
+        if not which or not list then return end
+        if not db.bagSort then
+            if self.thorSort then self.thorSort:Hide() end
+            return
+        end
+        self.thorSort = self.thorSort or makeSortButton(self, which)
+        local b = self.thorSort
+        b:ClearAllPoints()
+        if #list > 0 then
+            b:SetPoint("TOPLEFT", list[#list], "TOPRIGHT", 4, 0)
+        else
+            b:SetPoint("TOPLEFT", self, "TOPLEFT", 8, -8)
+        end
+        b:Show()
+        table.insert(list, b)
+    end)
+    relayoutBagnon()
+end
+
+---------------------------------------------------------------------------
+-- 17. World map player arrow: bigger. 3.3.5 draws it as a small 3D model on the world map
+--     (PlayerArrowFrame, with PlayerArrowEffectFrame's glow behind it); scaled each time the
+--     map opens. /thor maparrow 50-300 (percent, default 150).
+---------------------------------------------------------------------------
+local mapArrowHooked
+local function applyMapArrow()
+    if not db then return end
+    local scale = (db.mapArrowScale or 150) / 100
+    for _, name in ipairs({ "PlayerArrowFrame", "PlayerArrowEffectFrame" }) do
+        local model = _G[name]
+        if model and model.SetModelScale then model:SetModelScale(scale) end
+    end
+    if not mapArrowHooked and WorldMapFrame then
+        mapArrowHooked = true
+        WorldMapFrame:HookScript("OnShow", applyMapArrow)
+    end
+end
+
+---------------------------------------------------------------------------
 -- Events
 ---------------------------------------------------------------------------
 events:RegisterEvent("ADDON_LOADED")
+events:RegisterEvent("BANKFRAME_OPENED")
+events:RegisterEvent("BANKFRAME_CLOSED")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -856,7 +1148,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
             -- XP bar settings from the app (AppSettings.lua, rewritten by the app each launch).
             local app = ThorControlsApp
             if type(app) == "table" then
-                for _, k in ipairs({ "xpShow", "xpText", "xpWidth", "xpHeight", "xpX", "xpY" }) do
+                for _, k in ipairs({ "xpShow", "xpText", "xpWidth", "xpHeight", "xpX", "xpY", "bagSort" }) do
                     if app[k] ~= nil then db[k] = app[k] end
                 end
             end
@@ -898,12 +1190,21 @@ events:SetScript("OnEvent", function(_, event, arg1)
         bindBattlegroundsKey()
         if db.spikes then setSpikes(true) end
         fixBarCooldowns()
+        applyPetRing()
+        applyMapArrow()
+        if IsAddOnLoaded("Bagnon") then hookBagnon() end
     elseif event == "PLAYER_ENTERING_WORLD" then
         applyPetBar()
+        applyPetRing()
         applyTrail()
         fixBarCooldowns()
     elseif event == "PLAYER_REGEN_DISABLED" then
         fixBarCooldowns() -- buttons added by layout changes since login
+        stopSort(sortJob and "Sorting stopped: you entered combat.")
+    elseif event == "BANKFRAME_OPENED" then
+        bankOpen = true
+    elseif event == "BANKFRAME_CLOSED" then
+        bankOpen = nil
     elseif event == "UNIT_PET" then
         if arg1 == "player" then applyPetBar() end
     elseif event == "PLAYER_REGEN_ENABLED" then
@@ -911,6 +1212,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
         if pending.nameplates then applyNameplates() end
         if pending.camera then applyCamera() end
         if pending.pet then applyPetBar() end
+        if pending.petRing then applyPetRing() end
         if pending.blizz then hideBlizzardBars() end
     end
 end)
@@ -1130,6 +1432,26 @@ SlashCmdList.THORCONTROLS = function(input)
         if InCombatLockdown() then msg("Leave combat first."); return end
         applyDefaultBindings(true)
         ReloadUI()
+    elseif cmd == "sortbutton" and (value == "on" or value == "off") then
+        -- Typed by the app when Settings > Interface > Sort button in Bagnon changes.
+        db.bagSort = value == "on"
+        if IsAddOnLoaded("Bagnon") then
+            if bagnonHooked then relayoutBagnon() else hookBagnon() end
+        end
+    elseif cmd == "maparrow" and tonumber(value) and tonumber(value) >= 50 and tonumber(value) <= 300 then
+        db.mapArrowScale = tonumber(value)
+        applyMapArrow()
+        msg("World map arrow size " .. db.mapArrowScale .. "%.")
+    elseif cmd == "sort" then
+        startSort(value == "bank" and "bank" or "bags")
+    elseif cmd == "petring" and (value == "left" or value == "right") then
+        db.petRingLeft = value == "left"
+        applyPetRing()
+        msg("Pet ring on the " .. value .. ".")
+    elseif cmd == "petringscale" and tonumber(value) and tonumber(value) >= 50 and tonumber(value) <= 150 then
+        db.petRingScale = tonumber(value)
+        applyPetRing()
+        msg("Pet ring size " .. db.petRingScale .. "%.")
     elseif cmd == "calibrate" then
         if applyCalibration() then msg("Controller calibration restored.") end
         reloadConsolePortBindings()
@@ -1147,6 +1469,9 @@ SlashCmdList.THORCONTROLS = function(input)
         msg("/thor spikes on|off  - report slow frames and what ran in them")
         msg("/thor bar on|off  - turn ConsolePort's action bar on/off (reloads)")
         msg("/thor trail on|off  - controller icon next to the pointer")
+        msg("/thor sort, /thor sort bank  - sort your bags (or the bank, while it's open)")
+        msg("/thor petring left|right, /thor petringscale 50-150  - where and how big ConsolePort's pet ring is")
+        msg("/thor maparrow 50-300  - size of your arrow on the world map (percent)")
         msg("/thor calibrate  - put the controller calibration back")
         msg("/thor defaults  - replace this character's controller bindings with the defaults (reloads)")
     end

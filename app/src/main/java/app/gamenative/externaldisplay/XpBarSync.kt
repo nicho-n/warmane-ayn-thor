@@ -6,12 +6,13 @@ import android.util.Log
 import java.io.File
 
 /**
- * wow-mobile: hands the XP bar settings (Settings > XP bar) to the ThorControls addon.
+ * wow-mobile: hands the XP bar settings (Settings > XP bar) and the Bagnon sort button
+ * setting (Settings > Interface) to the ThorControls addon.
  *
  * - On game start, and on every change, they're written to ThorControls/AppSettings.lua,
  *   which the addon reads when WoW loads its UI (login or /reload).
- * - On a change while in the world, the app also types "/thor xpbar ..." so it shows right
- *   away. That waits until the slider has been still for a moment, and is skipped outside the
+ * - On a change while in the world, the app also types "/thor xpbar ..." (or
+ *   "/thor sortbutton on|off") so it shows right away. That waits until the slider has been still for a moment, and is skipped outside the
  *   world (the WoWMobileLink addon only sends from there): on the login or character screen,
  *   Enter would log in or enter the world.
  */
@@ -28,12 +29,16 @@ object XpBarSync {
     var typer: ((String) -> Unit)? = null
 
     private val handler = Handler(Looper.getMainLooper())
-    private val send = Runnable { sendNow() }
+    private val send = Runnable { sendNow(command()) }
+    private val sendSortButton = Runnable {
+        sendNow("/thor sortbutton " + if (PadSettings.bool(PadSettings.BAG_SORT_BUTTON)) "on" else "off")
+    }
 
-    fun changed() {
+    fun changed(sortButton: Boolean = false) {
         write()
-        handler.removeCallbacks(send)
-        handler.postDelayed(send, QUIET_MS)
+        val runnable = if (sortButton) sendSortButton else send
+        handler.removeCallbacks(runnable)
+        handler.postDelayed(runnable, QUIET_MS)
     }
 
     fun write() {
@@ -41,14 +46,15 @@ object XpBarSync {
         if (!dir.isDirectory) return
         try {
             File(dir, "AppSettings.lua").writeText(
-                "-- XP bar settings from the Warmane Ayn Thor app (Settings > XP bar). The app rewrites this\n" +
-                    "-- file when it starts the game and when the settings change.\n" +
+                "-- Settings from the Warmane Ayn Thor app (Settings > XP bar, Settings > Interface). The app\n" +
+                    "-- rewrites this file when it starts the game and when the settings change.\n" +
                     "ThorControlsApp = { xpShow = ${PadSettings.bool(PadSettings.XP_SHOW)}, " +
                     "xpText = ${PadSettings.bool(PadSettings.XP_TEXT)}, " +
                     "xpWidth = ${PadSettings.int(PadSettings.XP_WIDTH)}, " +
                     "xpHeight = ${PadSettings.int(PadSettings.XP_HEIGHT)}, " +
                     "xpX = ${PadSettings.int(PadSettings.XP_X)}, " +
-                    "xpY = ${PadSettings.int(PadSettings.XP_Y)} }\n",
+                    "xpY = ${PadSettings.int(PadSettings.XP_Y)}, " +
+                    "bagSort = ${PadSettings.bool(PadSettings.BAG_SORT_BUTTON)} }\n",
             )
         } catch (e: Exception) {
             Log.w(TAG, "couldn't write AppSettings.lua: $e")
@@ -62,8 +68,8 @@ object XpBarSync {
             "${PadSettings.int(PadSettings.XP_X)} ${PadSettings.int(PadSettings.XP_Y)}"
     }
 
-    private fun sendNow() {
+    private fun sendNow(command: String) {
         if (System.currentTimeMillis() - LinkState.lastPacketAt > IN_WORLD_MS) return
-        typer?.invoke(command())
+        typer?.invoke(command)
     }
 }
