@@ -184,7 +184,7 @@ object PadSettings {
         FORWARD_JUMP to 0,
         TURN_AROUND to false,
         STRAFE_FREE_CAMERA to false,
-        FORWARD_FOLLOWS_CAMERA to false,
+        FORWARD_FOLLOWS_CAMERA to true,
         BAG_SORT_BUTTON to false,
         POINTER_CENTER to true,
         HP_AMOUNT to false,
