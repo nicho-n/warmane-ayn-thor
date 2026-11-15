@@ -54,6 +54,8 @@ class ExternalPadSettingsView(
             addView(note("Left stick all the way down turns you around and runs that way; part way down walks backwards."))
             addView(toggleRow(listOf("Free camera rotation while strafing" to PadSettings.STRAFE_FREE_CAMERA)))
             addView(note("Strafing straight left or right turns on camera rotate mode, so the right stick swings only the camera. When the strafe ends you turn to face where the camera looks."))
+            addView(toggleRow(listOf("Forward moves where the camera looks" to PadSettings.FORWARD_FOLLOWS_CAMERA)))
+            addView(note("In camera rotate mode (R3), holding the left stick straight forward ends it and turns you toward where the camera is looking, so you move that way. The camera stays where you put it."))
         }
         section("Targeting", collapsible = true) {
             addView(note("The Target page's Nearby list: enemies (hostile and neutral) fill it from one corner, friendlies from the other."))

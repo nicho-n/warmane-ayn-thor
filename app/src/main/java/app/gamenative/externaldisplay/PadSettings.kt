@@ -83,6 +83,8 @@ object PadSettings {
     const val TURN_AROUND = "turn_around"
     /** Strafing straight sideways turns on camera rotate mode until the strafe ends. */
     const val STRAFE_FREE_CAMERA = "strafe_free_camera"
+    /** In R3 camera rotate mode, holding the stick straight forward ends it and turns you toward where the camera looks. */
+    const val FORWARD_FOLLOWS_CAMERA = "forward_follows_camera"
     /** The Target page's focus row (Clear Focus / Set Focus or your focus). */
     const val FOCUS_BAR = "focus_bar"
     /** XP bar (ThorControls addon, see XpBarSync): shown, numbers on it, width (% of D-pad Left to A), height, offsets. */
@@ -174,6 +176,7 @@ object PadSettings {
         FORWARD_JUMP to 0,
         TURN_AROUND to false,
         STRAFE_FREE_CAMERA to false,
+        FORWARD_FOLLOWS_CAMERA to false,
         XP_SHOW to true,
         XP_TEXT to false,
         XP_WIDTH to 100,

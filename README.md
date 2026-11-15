@@ -61,7 +61,7 @@ set of action bar buttons. Other buttons:
 | B + L2 + R2 | Utility ring |
 | Left stick | Move. With "Moving backwards rotates character" on: pulled fully back, turn around and run (part way back walks backwards) |
 | Right stick | Camera |
-| R3 | Camera rotate mode: the right stick swings the camera around your character; R3 again puts it back behind you. With "Free camera rotation while strafing" on, it is also on while you strafe |
+| R3 | Camera rotate mode: the right stick swings the camera around your character; R3 again puts it back behind you. With "Free camera rotation while strafing" on, it is also on while you strafe. With "Forward moves where the camera looks" on, holding the left stick straight forward ends it and you move where the camera looks |
 | Back | Pointer mode: the right stick moves the pointer, L3 clicks |
 | L3 | Friendly nameplates on/off (a click in pointer mode) |
 

@@ -391,12 +391,34 @@ public class ConsolePortController {
         }
     };
 
+    // "Forward moves where the camera looks" setting: in camera rotate mode turned on with R3,
+    // holding the stick straight forward for AUTO_ORBIT_FORWARD_MS ends it like a strafe free look
+    // ends: the camera stays where it is and the character turns toward where it looks. If forward was already held
+    // when R3 was pressed, it has to be let go first, so R3 while running doesn't end at once.
+    private boolean orbitForwardPending, orbitForwardBlocked;
+    private final Runnable orbitForwardEnd = () -> {
+        orbitForwardPending = false;
+        if (orbitMode && !autoOrbit && !pointerMode && arrows[0] && !arrows[1] && !arrows[3]) endAutoOrbit();
+    };
+
+    private void updateOrbitForward() {
+        boolean straightForward = arrows[0] && !arrows[1] && !arrows[3];
+        if (!arrows[0]) orbitForwardBlocked = false;
+        boolean wanted = straightForward && orbitMode && !autoOrbit && !pointerMode && !orbitForwardBlocked
+            && app.gamenative.externaldisplay.PadSettings.INSTANCE.boolValue(app.gamenative.externaldisplay.PadSettings.FORWARD_FOLLOWS_CAMERA);
+        if (wanted == orbitForwardPending) return;
+        if (wanted) handler.postDelayed(orbitForwardEnd, AUTO_ORBIT_FORWARD_MS);
+        else handler.removeCallbacks(orbitForwardEnd);
+        orbitForwardPending = wanted;
+    }
+
     /**
      * Starts with a strafe straight sideways (not a diagonal). Then, as in camera rotate mode,
      * diagonals, backwards and sideways keep it on; straight forward ends it, turning the
      * character to the camera's direction, and so does letting the stick go for a moment.
      */
     private void updateAutoOrbit() {
+        updateOrbitForward();
         boolean sideways = arrows[1] || arrows[3];
         boolean centred = !sideways && !arrows[0] && !arrows[2];
         if (!sideways) autoOrbitOff = false;
@@ -561,6 +583,7 @@ public class ConsolePortController {
         if (on && pointerMode) setPointerMode(false);
         releaseCamera();
         orbitMode = on;
+        if (on) orbitForwardBlocked = arrows[0];
         if (on) tapCtrlAlt(XKeycode.KEY_F7);
         // A moment after the camera drag has been let go, so WoW has ended it first. Once the
         // camera is back (ThorControls repeats it for 0.2 s), the character is lined up with it.
