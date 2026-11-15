@@ -35,8 +35,6 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 - **Enhanced Movement Mode** (off by default, turn it on under Settings > Movement): backpedalling
   rotates your character 180 degrees, and strafing enables free look. A movement setup that rivals
   the precision of a mouse.
-- **Bag sorting** (off by default, turn it on under Settings > Interface): a sort button next
-  to Bagnon's search button puts your bags in order: Hearthstone, materials, food, then the rest.
 - **Recommended addons** (optional, offered when you choose your game folder): Questie,
   Bagnon, Auctionator, Leatrix Plus, SexyMap, GearScoreLite, BattlegroundTargets and
   ShadowedUnitFrames raid frames, with recommended settings.
