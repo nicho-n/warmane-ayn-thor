@@ -28,8 +28,9 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
   with the game on the top screen.
 - **Opinionated console controls:** a remappable ConsolePort controller layout, plus **A** to
   play, enter the world and log in, and the **D-pad** to pick a character.
-- **Enhanced Movement Mode:** Backpedalling rotates character 180 degrees, strafing enables
-  free look. A movement setup that rivals the precision of a mouse.
+- **Enhanced Movement Mode** (off by default, turn it on under Settings > Movement): backpedalling
+  rotates your character 180 degrees, and strafing enables free look. A movement setup that rivals
+  the precision of a mouse.
 
 ## Default controller layout
 
@@ -58,9 +59,9 @@ set of action bar buttons. Other buttons:
 | D-pad down + L2 | Camera zoom out |
 | A + L2 + R2 | Open all bags |
 | B + L2 + R2 | Utility ring |
-| Left stick | Move; pulled fully back, turn around and run (part way back walks backwards) |
+| Left stick | Move. With "Moving backwards rotates character" on: pulled fully back, turn around and run (part way back walks backwards) |
 | Right stick | Camera |
-| R3 | Camera rotate mode: the right stick swings the camera around your character; R3 again puts it back behind you. It is also on while you strafe |
+| R3 | Camera rotate mode: the right stick swings the camera around your character; R3 again puts it back behind you. With "Free camera rotation while strafing" on, it is also on while you strafe |
 | Back | Pointer mode: the right stick moves the pointer, L3 clicks |
 | L3 | Friendly nameplates on/off (a click in pointer mode) |
 
