@@ -668,6 +668,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             runOnUiThread(() -> setLinkActive(visible));
             return kotlin.Unit.INSTANCE;
         });
+        // State only until a link page shows.
+        setLinkActive(false);
 
         // Login / character select: the controller works there (A = Enter), and auto-login
         // (WoW Settings) types the saved password once the login screen shows.
@@ -927,6 +929,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
      * N both, B friendly NPCs only; Home, End, Page Up, Page Down the same with buffs/debuffs.
      */
     private com.winlator.xserver.XKeycode linkOpenKey() {
+        // No link page showing: state only (whether a spell waits to be placed, for the right stick).
+        if (!linkPageShown) return com.winlator.xserver.XKeycode.KEY_F10;
         // The Quests page: the link carries the quest log instead.
         if (app.gamenative.externaldisplay.PadBridge.INSTANCE.getQuestPageShown()) return com.winlator.xserver.XKeycode.KEY_INSERT;
         boolean npcs = app.gamenative.externaldisplay.PadSettings.INSTANCE.bool(app.gamenative.externaldisplay.PadSettings.NEARBY_FRIENDLY_NPC);
@@ -964,17 +968,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
     };
 
-    private void setLinkActive(boolean active) {
+    private boolean linkPageShown;
+
+    /**
+     * The link runs all the time: with the Target or Quests page showing it carries their data,
+     * otherwise only its header (state only), so the controller knows when a spell waits to be
+     * placed on the ground.
+     */
+    private void setLinkActive(boolean pageShown) {
         signalHandler.removeCallbacks(linkKeepAlive);
-        if (active) {
-            linkKeepAlive.run();
-            linkReader.start();
-        }
-        else {
-            linkOpenKeySent = null;
-            sendLinkChord(com.winlator.xserver.XKeycode.KEY_L);
-            linkReader.stop();
-        }
+        linkPageShown = pageShown;
+        linkKeepAlive.run();
+        linkReader.start();
     }
 
     /** Ctrl+Alt+Shift+key with the right-hand modifiers, with the controller's trigger modifiers let go. */

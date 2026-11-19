@@ -703,14 +703,16 @@ local function fixBarCooldowns()
             end
             -- Without a native cooldown running, the Cooldown frame hides itself at
             -- once, and ConsolePort's OnHide then clears its own sweep and timer. Only
-            -- let that through when the button's spell really is off cooldown.
+            -- let that through when the button's spell really is off cooldown. The global
+            -- cooldown's sweep too, unless it is turned off (/thor gcd off): it used to stop
+            -- part of the way round.
             local onHide = cd:GetScript("OnHide")
             cd:SetScript("OnHide", function(self, ...)
                 local now = GetTime()
                 local button = self:GetParent()
                 if button and button.GetCooldown then
                     local s, d = button:GetCooldown()
-                    if s and d and d > GCD_MAX and s + d > now + 0.05 then return end
+                    if s and d and d > 0 and (d > GCD_MAX or not (db and db.hideGcd)) and s + d > now + 0.05 then return end
                 end
                 if onHide then return onHide(self, ...) end
             end)
@@ -830,6 +832,40 @@ turnEnd:SetScript("OnClick", function()
     for name, value in pairs(turnSaved) do SetCVar(name, value) end
     turnSaved = nil
 end)
+-- Alt+Ctrl+F12 (the app's L1 + R1 held together, sent when they're pressed and again when
+-- they're let go; every other Alt+Ctrl+F key is taken): the camera looks behind the character,
+-- then swings back. Camera following is off meanwhile (unless the camera rotate mode already
+-- turned it off), so it doesn't swing back while running.
+local lookFollow
+local lookBehind = CreateFrame("Button", "ThorControlsLookBehind", UIParent)
+lookBehind:SetScript("OnClick", function()
+    FlipCameraYaw(180)
+    if lookFollow == nil then
+        lookFollow = db and not db.cameraFollow or false
+        if lookFollow then followOff() end
+    else
+        if lookFollow then followBack() end
+        lookFollow = nil
+    end
+end)
+-- Alt+Ctrl+Shift+F11 (ConsolePort has F12: its WoWmapper popup) (the app, before and after Start's left click): while the click is held,
+-- WoW's sticky targeting is on, so a click on open ground doesn't clear the target; unless a
+-- spell is being placed (the click places it). The player's setting is kept in ThorControlsDB
+-- meanwhile, and put back at login if the game stopped during a click.
+local startClick = CreateFrame("Button", "ThorControlsStartClick", UIParent)
+startClick:SetScript("OnClick", function()
+    if not db then return end
+    if db.startClickDeselect == nil then
+        if SpellIsTargeting() then db.startClickDeselect = false
+        else
+            db.startClickDeselect = GetCVar("deselectOnClick")
+            SetCVar("deselectOnClick", "0")
+        end
+    else
+        if db.startClickDeselect then SetCVar("deselectOnClick", db.startClickDeselect) end
+        db.startClickDeselect = nil
+    end
+end)
 local enemyPlates = CreateFrame("Button", "ThorControlsEnemyNameplates", UIParent)
 enemyPlates:SetScript("OnClick", function() toggleNameplates("nameplateShowEnemies") end)
 local friendPlates = CreateFrame("Button", "ThorControlsFriendlyNameplates", UIParent)
@@ -845,6 +881,8 @@ local function bindBattlegroundsKey()
     SetOverrideBindingClick(orbitQuit, false, "ALT-CTRL-F11", "ThorControlsCameraFollow")
     SetOverrideBindingClick(turnStart, false, "ALT-CTRL-F9", "ThorControlsTurnStart")
     SetOverrideBindingClick(turnEnd, false, "ALT-CTRL-F10", "ThorControlsTurnEnd")
+    SetOverrideBindingClick(lookBehind, false, "ALT-CTRL-F12", "ThorControlsLookBehind")
+    SetOverrideBindingClick(startClick, false, "ALT-CTRL-SHIFT-F11", "ThorControlsStartClick")
 end
 
 local function noop() end
@@ -1133,6 +1171,148 @@ local function hookBagnon()
 end
 
 ---------------------------------------------------------------------------
+-- 18. Cooldowns of the trigger actions. ConsolePort's bar shows a button's L2 / R2 / L2+R2
+--     actions only while the triggers are held, so their cooldowns can't be seen otherwise.
+--     Each one that's on cooldown gets a small icon with its time beside the button, on the
+--     side where ConsolePort draws that trigger's wing. /thor modcd on|off (on by default).
+---------------------------------------------------------------------------
+local MOD_STATES = { "SHIFT-", "CTRL-", "CTRL-SHIFT-" }
+local MOD_SUFFIX = { ["SHIFT-"] = "_SHIFT", ["CTRL-"] = "_CTRL", ["CTRL-SHIFT-"] = "_CTRL-SHIFT" }
+-- {label point, button point}, by the button's orientation (as ConsolePortBar's wings).
+local MOD_ANCHOR = {
+    ["SHIFT-"] = { down = { "TOPRIGHT", "BOTTOMLEFT" }, up = { "BOTTOMRIGHT", "TOPLEFT" },
+        left = { "BOTTOMRIGHT", "TOPLEFT" }, right = { "BOTTOMLEFT", "TOPRIGHT" } },
+    ["CTRL-"] = { down = { "TOPLEFT", "BOTTOMRIGHT" }, up = { "BOTTOMLEFT", "TOPRIGHT" },
+        left = { "TOPRIGHT", "BOTTOMLEFT" }, right = { "TOPLEFT", "BOTTOMRIGHT" } },
+    ["CTRL-SHIFT-"] = { down = { "TOP", "BOTTOM" }, up = { "BOTTOM", "TOP" },
+        left = { "RIGHT", "LEFT" }, right = { "LEFT", "RIGHT" } },
+}
+local MOD_LABEL_SIZE = 24
+local modLabels, modTicker = {}, nil
+local function modTime(remaining)
+    if remaining >= 60 then
+        local s = math.ceil(remaining)
+        return string.format("%d:%02d", math.floor(s / 60), s % 60)
+    end
+    return string.format("%d", math.ceil(remaining))
+end
+local function newModLabel(main, mod)
+    local f = CreateFrame("Frame", nil, UIParent)
+    f:SetSize(MOD_LABEL_SIZE, MOD_LABEL_SIZE)
+    f:SetFrameStrata("HIGH")
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetAllPoints()
+    f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    f.icon:SetVertexColor(0.55, 0.55, 0.55)
+    f.text = f:CreateFontString(nil, "OVERLAY")
+    f.text:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+    f.text:SetPoint("CENTER", 0, 0)
+    f.main, f.mod = main, mod
+    f.wing = _G[main:GetName() .. MOD_SUFFIX[mod]]
+    f:Hide()
+    return f
+end
+local function placeModLabel(f)
+    local anchor = MOD_ANCHOR[f.mod][f.main.orientation or "down"] or MOD_ANCHOR[f.mod].down
+    if f.placed == anchor then return end
+    f.placed = anchor
+    f:ClearAllPoints()
+    f:SetPoint(anchor[1], f.main, anchor[2], 0, 0)
+end
+local function updateModLabels()
+    local now = GetTime()
+    for _, f in ipairs(modLabels) do
+        local main, show = f.main, false
+        if db and not db.hideModCooldowns and main:IsVisible() and main:GetAttribute("state") ~= f.mod
+            and not (f.wing and f.wing:IsVisible() and f.wing:GetAlpha() > 0.1) then
+            local kind, action = main:GetAction(f.mod)
+            if kind == "action" and action then
+                local start, duration, enabled = GetActionCooldown(action)
+                local remaining = start and duration and (start + duration - now) or 0
+                if enabled == 1 and duration > GCD_MAX and remaining > 0 then
+                    show = true
+                    placeModLabel(f)
+                    f.icon:SetTexture(GetActionTexture(action))
+                    f.text:SetText(modTime(remaining))
+                end
+            end
+        end
+        if show then f:Show() elseif f:IsShown() then f:Hide() end
+    end
+end
+local function findModifierButtons()
+    local known = {}
+    for _, f in ipairs(modLabels) do known[f.main] = true end
+    local f = EnumerateFrames()
+    while f do
+        local name = f:GetName()
+        if name and not known[f] and name:match("^CPB_[%w]+_?[%w]*$") and _G[name .. "_SHIFT"]
+            and f.GetAction and f.GetAttribute and f:GetAttribute("modifier") == "" then
+            known[f] = true
+            for _, mod in ipairs(MOD_STATES) do table.insert(modLabels, newModLabel(f, mod)) end
+        end
+        f = EnumerateFrames(f)
+    end
+    if not modTicker and #modLabels > 0 then
+        local wait = 0
+        modTicker = CreateFrame("Frame")
+        modTicker:SetScript("OnUpdate", function(_, elapsed)
+            wait = wait - elapsed
+            if wait > 0 then return end
+            wait = 0.2
+            updateModLabels()
+        end)
+    end
+end
+
+---------------------------------------------------------------------------
+-- 19. Items the game hasn't loaded yet. After logging in, an item the client has no details
+--     for (often a Healthstone) shows "Retrieving item information" and can't be used until
+--     a /reload. The client asks the server for an item's details when a tooltip shows it, so
+--     every bag and action bar item without details is shown in a hidden tooltip, every 2 s
+--     for up to 30 s, until all have arrived.
+---------------------------------------------------------------------------
+local itemTip = CreateFrame("GameTooltip", "ThorControlsItemTip", nil, "GameTooltipTemplate")
+local function itemId(link) return link and tonumber(link:match("item:(%d+)")) end
+local function missingItems()
+    local missing = {}
+    for bag = 0, NUM_BAG_SLOTS do
+        for slot = 1, GetContainerNumSlots(bag) do
+            local id = (GetContainerItemID and GetContainerItemID(bag, slot)) or itemId(GetContainerItemLink(bag, slot))
+            if id and not GetItemInfo(id) then missing[id] = true end
+        end
+    end
+    for slot = 1, 120 do
+        local kind, id = GetActionInfo(slot)
+        if kind == "item" and id and not GetItemInfo(id) then missing[id] = true end
+    end
+    return missing
+end
+local itemLoader, itemLoadLeft, itemLoadWait = CreateFrame("Frame"), 0, 0
+local function askForItems()
+    local any = false
+    for id in pairs(missingItems()) do
+        any = true
+        itemTip:SetOwner(WorldFrame, "ANCHOR_NONE")
+        itemTip:SetHyperlink("item:" .. id)
+        itemTip:Hide()
+    end
+    return any
+end
+itemLoader:SetScript("OnUpdate", function(self, elapsed)
+    itemLoadWait = itemLoadWait - elapsed
+    if itemLoadWait > 0 then return end
+    itemLoadWait = 2
+    itemLoadLeft = itemLoadLeft - 1
+    if not askForItems() or itemLoadLeft <= 0 then self:Hide() end
+end)
+itemLoader:Hide()
+local function loadMissingItems()
+    itemLoadLeft, itemLoadWait = 15, 0
+    itemLoader:Show()
+end
+
+---------------------------------------------------------------------------
 -- 17. World map player arrow: bigger. 3.3.5 draws it as a small 3D model on the world map
 --     (PlayerArrowFrame, with PlayerArrowEffectFrame's glow behind it); scaled each time the
 --     map opens. /thor maparrow 50-300 (percent, default 150).
@@ -1222,16 +1402,23 @@ events:SetScript("OnEvent", function(_, event, arg1)
         bindBattlegroundsKey()
         if db.spikes then setSpikes(true) end
         fixBarCooldowns()
+        findModifierButtons()
         applyPetRing()
         applyMapArrow()
+        -- The game stopped in the middle of Start's left click: the player's setting back.
+        if db.startClickDeselect then SetCVar("deselectOnClick", db.startClickDeselect) end
+        db.startClickDeselect = nil
         if IsAddOnLoaded("Bagnon") then hookBagnon() end
     elseif event == "PLAYER_ENTERING_WORLD" then
         applyPetBar()
         applyPetRing()
         applyTrail()
         fixBarCooldowns()
+        findModifierButtons()
+        loadMissingItems()
     elseif event == "PLAYER_REGEN_DISABLED" then
         fixBarCooldowns() -- buttons added by layout changes since login
+        findModifierButtons()
         stopSort(sortJob and "Sorting stopped: you entered combat.")
     elseif event == "BANKFRAME_OPENED" then
         bankOpen = true
@@ -1484,6 +1671,10 @@ SlashCmdList.THORCONTROLS = function(input)
         db.petRingScale = tonumber(value)
         applyPetRing()
         msg("Pet ring size " .. db.petRingScale .. "%.")
+    elseif cmd == "modcd" and (value == "on" or value == "off") then
+        db.hideModCooldowns = value == "off"
+        updateModLabels()
+        msg("Cooldowns of the L2/R2 actions beside their buttons " .. value .. ".")
     elseif cmd == "calibrate" then
         if applyCalibration() then msg("Controller calibration restored.") end
         reloadConsolePortBindings()
@@ -1497,6 +1688,7 @@ SlashCmdList.THORCONTROLS = function(input)
         msg("/thor triggers on|off  - show the L2/R2 icons on the ConsolePort bar (reloads)")
         msg("/thor castbar on|off  - WoW's own cast bar instead of ConsolePort's (reloads)")
         msg("/thor gcd on|off  - global cooldown sweep on the action buttons")
+        msg("/thor modcd on|off  - cooldowns of the L2/R2 actions beside their buttons")
         msg("/thor profile on|off, /thor cpu  - measure which addons use the most CPU")
         msg("/thor spikes on|off  - report slow frames and what ran in them")
         msg("/thor bar on|off  - turn ConsolePort's action bar on/off (reloads)")

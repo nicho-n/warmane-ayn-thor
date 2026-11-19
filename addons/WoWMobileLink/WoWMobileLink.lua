@@ -184,12 +184,25 @@ local function timeLeft(duration, expires)
     return math.min(254, 180 + math.ceil(left / 60))
 end
 
+-- Your own (and your pet's) debuffs on each unit, by GUID, so units the client has no token
+-- for (Nearby's nameplates other than your target) still show them: from the combat log, and
+-- exactly from UnitAura whenever the unit is your target. mine[guid][spell name] =
+-- { icon = texture, expires = time or 0 when not known yet }. Durations are learned per spell
+-- from UnitAura. A nameplate gets its unit's GUID while it is your target (wmlGuid).
+local mine, knownDuration = {}, {}
+
+local function rememberFromUnit(unit, own)
+    local guid = UnitGUID(unit)
+    if guid then mine[guid] = own end
+end
+
 -- Up to AURA_MAX auras worth showing: the listed ones on anybody, your own (and your pet's)
 -- debuffs on enemies (DoTs, to see when to reapply), debuffs you can dispel on friends, and
 -- buffs you can purge or spellsteal on enemies.
 local function unitAuras(unit)
     if not unit or not UnitExists(unit) then return {} end
     local cats, hostile, picked = categories(), UnitCanAttack("player", unit), {}
+    local own = hostile and {} or nil
     for pass = 1, 2 do
         local harmful = pass == 1
         local filter = harmful and "HARMFUL" or "HELPFUL"
@@ -197,7 +210,11 @@ local function unitAuras(unit)
             local name, _, icon, _, dispelType, duration, expires, caster, stealable = UnitAura(unit, i, filter)
             if not name then break end
             local cat = cats[name]
-            if not cat and harmful and hostile and (caster == "player" or caster == "pet") then cat = 7 end
+            if harmful and hostile and (caster == "player" or caster == "pet") then
+                if not cat then cat = 7 end
+                if duration and duration > 0 then knownDuration[name] = duration end
+                own[name] = { icon = icon, expires = (expires and expires > 0) and expires or 0 }
+            end
             local dispel = DISPEL[dispelType or ""] or 0
             local want = cat ~= nil
             if not want then
@@ -210,10 +227,27 @@ local function unitAuras(unit)
             end
         end
     end
+    if own then rememberFromUnit(unit, own) end
     table.sort(picked, function(a, b)
         if a.rank ~= b.rank then return a.rank < b.rank end
         return a.time < b.time
     end)
+    for i = #picked, AURA_MAX + 1, -1 do picked[i] = nil end
+    return picked
+end
+
+-- Your remembered debuffs on a unit without a token (see mine), as unitAuras gives them.
+local function rememberedAuras(guid)
+    local own = guid and mine[guid]
+    if not own then return {} end
+    local now, picked = GetTime(), {}
+    for name, a in pairs(own) do
+        if a.expires > 0 and a.expires <= now then own[name] = nil
+        elseif a.icon then
+            picked[#picked + 1] = { icon = iconHash(a.icon), time = timeLeft(a.expires > 0 and 1 or 0, a.expires), kind = 7 + 64 }
+        end
+    end
+    table.sort(picked, function(a, b) return a.time < b.time end)
     for i = #picked, AURA_MAX + 1, -1 do picked[i] = nil end
     return picked
 end
@@ -367,6 +401,25 @@ local function learnUnit(unit)
         if name and token and CLASS[token] then classByName[name] = CLASS[token] end
     end
 end
+-- Your debuffs from the combat log (see mine). A unit that dies loses them.
+local function rememberLog(sub, srcGuid, dstGuid, dstName, spellId, spellName, auraType)
+    if sub == "UNIT_DIED" or sub == "UNIT_DESTROYED" then mine[dstGuid] = nil; return end
+    if not dstGuid or not spellName or auraType ~= "DEBUFF" then return end
+    if srcGuid ~= UnitGUID("player") and srcGuid ~= UnitGUID("pet") then return end
+    if sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_REFRESH" or sub == "SPELL_AURA_APPLIED_DOSE" then
+        local d = knownDuration[spellName]
+        mine[dstGuid] = mine[dstGuid] or {}
+        mine[dstGuid][spellName] = { icon = select(3, GetSpellInfo(spellId)), expires = d and (GetTime() + d) or 0 }
+        -- A plate that never was the target gets the GUID when it's the only plate with that name.
+        local only, count = nil, 0
+        for f in pairs(plates) do
+            if f:IsShown() and f.wmlName == dstName then only, count = f, count + 1 end
+        end
+        if count == 1 and not only.wmlGuid then only.wmlGuid = dstGuid end
+    elseif sub == "SPELL_AURA_REMOVED" and mine[dstGuid] then
+        mine[dstGuid][spellName] = nil
+    end
+end
 local learner = CreateFrame("Frame")
 learner:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 learner:RegisterEvent("PLAYER_TARGET_CHANGED")
@@ -382,9 +435,10 @@ local function learnGuid(guid, name)
 end
 learner:SetScript("OnEvent", function(_, event, ...)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        local _, _, srcGuid, srcName, _, dstGuid, dstName = ...
+        local _, sub, srcGuid, srcName, _, dstGuid, dstName, _, spellId, spellName, _, auraType = ...
         learnGuid(srcGuid, srcName)
         learnGuid(dstGuid, dstName)
+        rememberLog(sub, srcGuid, dstGuid, dstName, spellId, spellName, auraType)
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         learnUnit("mouseover")
     elseif event == "PLAYER_TARGET_CHANGED" then
@@ -418,7 +472,17 @@ local function platesShown()
                         cls = 128 + q(r) * 16 + q(g) * 4 + q(b)
                     end
                 end
-                if targetName == name and f:GetAlpha() > 0.95 then flags = flags + 4 end
+                -- A recycled plate (another unit's now) forgets the GUID it had.
+                if f.wmlName ~= name then f.wmlGuid = nil end
+                f.wmlName = name
+                if not f.wmlHooked then
+                    f.wmlHooked = true
+                    f:HookScript("OnHide", function(self) self.wmlGuid, self.wmlName = nil, nil end)
+                end
+                if targetName == name and f:GetAlpha() > 0.95 then
+                    flags = flags + 4
+                    f.wmlGuid = UnitGUID("target")
+                end
                 local cx, cy = bar:GetCenter()
                 local scale = bar:GetEffectiveScale() / UIParent:GetEffectiveScale()
                 local px, py = 0, 0
@@ -871,13 +935,33 @@ local function collect()
     return mode, list
 end
 
+-- The header's mode byte: the targeting mode, plus 64 while a spell waits to be placed on the
+-- ground (the app's right stick then moves the cursor), plus 128 while the cursor is over a
+-- UI frame.
+local lastMode = 0
+local function modeByte(mode)
+    local focus = GetMouseFocus()
+    local overUi = focus and focus ~= WorldFrame and focus:GetParent() ~= WorldFrame
+    return mode + (SpellIsTargeting() and 64 or 0) + (overUi and 128 or 0)
+end
+
+-- State only (F10 open key: no link page is showing): the header and no units, without
+-- looking through the nameplates.
+local function buildState()
+    seq = (seq + 1) % 256
+    local b = { 87, 77, VERSION, seq, modeByte(lastMode), 0, 0 }
+    local crc = crc16(b, #b)
+    b[#b + 1] = math.floor(crc / 256)
+    b[#b + 1] = crc % 256
+    return b
+end
+
 -- One packet: header plus as many records as fit, rotating through the list.
 local function build()
     local mode, list = collect()
+    lastMode = mode
     seq = (seq + 1) % 256
-    local focus = GetMouseFocus()
-    local overUi = focus and focus ~= WorldFrame and focus:GetParent() ~= WorldFrame
-    local b = { 87, 77, VERSION, seq, mode + (overUi and 128 or 0), #list, 0 }
+    local b = { 87, 77, VERSION, seq, modeByte(mode), #list, 0 }
     local count = 0
     if #list > 0 then
         if cursor >= #list then cursor = 0 end
@@ -887,7 +971,12 @@ local function build()
             local name = r.name:sub(1, 24)
             -- Auras only for units WoW has a token for (a nameplate only when it's the target).
             local unit = r.unit or (bit.band(r.flags, 4) ~= 0 and "target") or nil
-            local auras = r.fakeAuras or (showAuras and r.slot ~= 129 and unitAuras(unit)) or {}
+            local auras = r.fakeAuras
+            if not auras and showAuras and r.slot ~= 129 then
+                if unit then auras = unitAuras(unit)
+                else auras = rememberedAuras(r.frame and r.frame.wmlGuid) end
+            end
+            auras = auras or {}
             if #b + 8 + #name + 4 + #auras * 5 + 2 > MAX_BYTES then break end
             b[#b + 1] = r.slot; b[#b + 1] = r.class; b[#b + 1] = r.hp; b[#b + 1] = r.flags
             b[#b + 1] = r.px or 0; b[#b + 1] = r.py or 0; b[#b + 1] = r.num or 0
@@ -926,6 +1015,7 @@ end
 --   CRC-16: the quest's objectives text and description, in pieces, each sent 3 times.
 ---------------------------------------------------------------------------
 local QUEST_VERSION = 2
+local stateMode = false
 local QUEST_TEXT_MAX = 90
 local questMode = false
 local questLinesCache, questLinesAt, questDirty = {}, 0, true
@@ -1074,9 +1164,14 @@ local function questByIndex(index, title)
     return t
 end
 
+local stateTurn = 0
 local function draw()
     local b
-    if questMode and detail then
+    stateTurn = (stateTurn + 1) % 3
+    if stateMode or (questMode and stateTurn == 0) then
+        -- The Quests page gets a state packet every third time too.
+        b = buildState()
+    elseif questMode and detail then
         detailTurn = not detailTurn
         b = detailTurn and buildDetail() or buildQuests()
     else
@@ -1128,7 +1223,7 @@ end
 local numberer, sinceNumbers = CreateFrame("Frame"), 0
 numberer:SetScript("OnUpdate", function(_, elapsed)
     sinceNumbers = sinceNumbers + elapsed
-    if active or sinceNumbers < NUMBER_INTERVAL then return end
+    if (active and not stateMode) or sinceNumbers < NUMBER_INTERVAL then return end
     sinceNumbers = 0
     platesShown()
 end)
@@ -1143,11 +1238,19 @@ local OPEN_KEYS = {
     HOME = { false, true, true }, END = { false, false, true }, PAGEUP = { true, true, true }, PAGEDOWN = { true, false, true },
     -- The Quests page: the strip carries the quest log instead (see buildQuests).
     INSERT = { nil, nil, nil, true },
+    -- No link page showing: state only (see buildState).
+    F10 = { nil, nil, nil, false, true },
 }
 local openButtons = {}
 for key, opt in pairs(OPEN_KEYS) do
     local b = CreateFrame("Button", "WoWMobileLinkOpen" .. key)
     b:SetScript("OnClick", function()
+        stateMode = opt[5] == true
+        if stateMode then
+            questMode = false
+            WoWMobileLink_SetActive(true)
+            return
+        end
         questMode = opt[4] == true
         if questMode then
             questDirty, questSent = true, {}
@@ -1234,6 +1337,15 @@ SlashCmdList.WOWMOBILELINK = function(arg)
             AbandonQuest()
             questDirty = true
             DEFAULT_CHAT_FRAME:AddMessage("Abandoned: " .. title)
+        end
+        return
+    elseif arg == "trade" then
+        -- The Target page's Trade button: opens a trade with the player you have targeted.
+        if UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player")
+            and UnitIsFriend("player", "target") then
+            InitiateTrade("target")
+        else
+            UIErrorsFrame:AddMessage("Target a player to trade with.", 1, 0.1, 0.1)
         end
         return
     elseif arg == "stress" then

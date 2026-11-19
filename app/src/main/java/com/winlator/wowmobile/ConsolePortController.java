@@ -74,6 +74,39 @@ public class ConsolePortController {
     public ConsolePortController(XServer xServer, WinHandler winHandler) {
         this.xServer = xServer;
         this.winHandler = winHandler;
+        // The pointer starts in the middle of the screen, not the top-left corner (X's 0,0).
+        // Moved there again while the game starts up, unless something else has placed it.
+        xServer.pointer.setX(xServer.screenInfo.width / 2);
+        xServer.pointer.setY(xServer.screenInfo.height / 2);
+        for (long delay : new long[] {3000, 8000, 15000}) handler.postDelayed(this::centerUntouchedPointer, delay);
+        // Each link packet (main thread): a spell placed or cancelled puts the cursor back at once.
+        app.gamenative.externaldisplay.LinkState.INSTANCE.addListener(() -> {
+            checkPlacing();
+            return kotlin.Unit.INSTANCE;
+        });
+    }
+
+    /**
+     * Whether a spell waits to be placed on the ground (the right stick moves the cursor then).
+     * Starting it lets go of the camera; when it ends (placed or cancelled) the cursor goes
+     * back to the middle of the screen, where the camera works from.
+     */
+    private boolean checkPlacing() {
+        boolean placing = app.gamenative.externaldisplay.LinkState.INSTANCE.placingSpell();
+        if (placing && cameraHeld) releaseCamera();
+        if (wasPlacing && !placing && !pointerMode) {
+            pointerPlaced = true;
+            xServer.injectPointerMove(xServer.screenInfo.width / 2, xServer.screenInfo.height / 2);
+        }
+        wasPlacing = placing;
+        return placing;
+    }
+
+    private void centerUntouchedPointer() {
+        int cx = xServer.screenInfo.width / 2, cy = xServer.screenInfo.height / 2;
+        short x = xServer.pointer.getX(), y = xServer.pointer.getY();
+        if (pointerMode || (x != 0 || y != 0) && (x != cx || y != cy)) return;
+        xServer.injectPointerMove(cx, cy);
     }
 
     private static boolean isController(InputDevice device) {
@@ -117,7 +150,9 @@ public class ConsolePortController {
             if (down && event.getRepeatCount() == 0) forwardJump();
             return true;
         }
+        if (lookBehindKey(keyCode, down, event.getRepeatCount())) return true;
         if (key != null) {
+            if (keyCode == KeyEvent.KEYCODE_BUTTON_START && startKey(down, event.getRepeatCount())) return true;
             if (event.getRepeatCount() == 0) {
                 if (down) {
                     // Remembered so the release goes to the same key even if the screen changed meanwhile.
@@ -170,6 +205,75 @@ public class ConsolePortController {
         return false;
     }
 
+    // ------------------------------------------------------------ look behind (L1 + R1)
+
+    /** How long a shoulder press waits for the other shoulder before it goes to the game. */
+    private static final long SHOULDER_WAIT_MS = 60;
+    private int waitingShoulder;
+    private final Runnable sendWaitingShoulder = this::sendWaitingShoulder;
+    private boolean lookingBehind;
+    private long lookStartedAt;
+    /** Shoulder buttons of the look-behind whose release is still to come (not sent to the game). */
+    private final java.util.Set<Integer> lookKeys = new java.util.HashSet<>();
+
+    private static boolean isShoulder(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_R1;
+    }
+
+    /**
+     * L1 and R1 pressed together (without the triggers) look behind the character until one is
+     * let go (ThorControls: Alt+Ctrl+F12 each time, a toggle). A shoulder press waits a moment for
+     * the other before it goes to the game, so the pair doesn't also target or jump.
+     */
+    private boolean lookBehindKey(int keyCode, boolean down, int repeat) {
+        if (!isShoulder(keyCode)) return false;
+        if (repeat > 0) return lookKeys.contains(keyCode) || waitingShoulder == keyCode;
+        if (down) {
+            if (shiftHeld || ctrlHeld || lookingBehind || pressedKeys.containsKey(keyCode)) return false;
+            if (waitingShoulder != 0 && waitingShoulder != keyCode) {
+                handler.removeCallbacks(sendWaitingShoulder);
+                lookKeys.add(waitingShoulder);
+                lookKeys.add(keyCode);
+                waitingShoulder = 0;
+                lookingBehind = true;
+                lookStartedAt = android.os.SystemClock.uptimeMillis();
+                tapCtrlAlt(XKeycode.KEY_F12);
+                return true;
+            }
+            // The other shoulder is already down and went to the game: a normal press.
+            int other = keyCode == KeyEvent.KEYCODE_BUTTON_L1 ? KeyEvent.KEYCODE_BUTTON_R1 : KeyEvent.KEYCODE_BUTTON_L1;
+            if (pressedKeys.containsKey(other)) return false;
+            waitingShoulder = keyCode;
+            handler.postDelayed(sendWaitingShoulder, SHOULDER_WAIT_MS);
+            return true;
+        }
+        if (lookKeys.remove(keyCode)) {
+            if (lookingBehind) {
+                lookingBehind = false;
+                // After the start's key taps are done (they take 40 ms).
+                long wait = Math.max(0, lookStartedAt + 60 - android.os.SystemClock.uptimeMillis());
+                handler.postDelayed(() -> tapCtrlAlt(XKeycode.KEY_F12), wait);
+            }
+            return true;
+        }
+        if (waitingShoulder == keyCode) {
+            // A quick tap, let go before the wait was over: press and release it now.
+            handler.removeCallbacks(sendWaitingShoulder);
+            sendWaitingShoulder();
+            return false;
+        }
+        return false;
+    }
+
+    private void sendWaitingShoulder() {
+        int keyCode = waitingShoulder;
+        if (keyCode == 0) return;
+        waitingShoulder = 0;
+        XKeycode sent = glueKey(keyCode, buttonKey(keyCode));
+        pressedKeys.put(keyCode, sent);
+        xServer.injectKeyPress(sent);
+    }
+
     /**
      * Settings > Controller > Forward jump: 0 off, 1 L2 + R1, 2 R2 + L1, 3 L2 + L1, 4 R2 + R1
      * (the trigger held, then the shoulder button pressed, with the other trigger up).
@@ -216,6 +320,61 @@ public class ConsolePortController {
     }
 
     private boolean modifiersSuspended;
+    /**
+     * Start (without the triggers) is also WoW's left click, before its own binding (interact
+     * with mouseover): it places ground-targeted spells like Ring of Fire. The click is WoW's own
+     * left-click binding (Numpad *, CAMERAORSELECTORMOVE, bound by ThorControls), held while
+     * Start is; Start's own key follows when Start is let go, since an interact while a spell is
+     * waiting to be placed cancels the placement. Alt+Ctrl+Shift+F11 before and after tells
+     * ThorControls to keep the target meanwhile (sticky targeting) unless a spell is being
+     * placed, so a click on open ground doesn't clear it.
+     */
+    private boolean startKey(boolean down, int repeat) {
+        if (repeat > 0) return startClicking;
+        if (down) {
+            if (shiftHeld || ctrlHeld || startClicking) return false;
+            startClicking = true;
+            startClickSent = false;
+            tapCtrlAltShift(XKeycode.KEY_F11);
+            handler.postDelayed(startClick, 50);
+            return true;
+        }
+        if (!startClicking) return false;
+        startClicking = false;
+        if (!startClickSent) {
+            handler.removeCallbacks(startClick);
+            startClick.run();
+        }
+        xServer.injectKeyRelease(XKeycode.KEY_KP_MULTIPLY);
+        // Start's own key (F6), or what it is on the login and character screens.
+        XKeycode own = glueKey(KeyEvent.KEYCODE_BUTTON_START, XKeycode.KEY_F6);
+        handler.postDelayed(() -> xServer.injectKeyPress(own), 30);
+        handler.postDelayed(() -> xServer.injectKeyRelease(own), 70);
+        handler.postDelayed(() -> tapCtrlAltShift(XKeycode.KEY_F11), 90);
+        return true;
+    }
+
+    private boolean startClicking, startClickSent;
+    private final Runnable startClick = this::sendStartClick;
+    private void sendStartClick() {
+        if (startClickSent) return;
+        startClickSent = true;
+        xServer.injectKeyPress(XKeycode.KEY_KP_MULTIPLY);
+    }
+
+    /** Alt+Ctrl+Shift+key, the right-hand modifiers, with the trigger modifiers let go meanwhile. */
+    private void tapCtrlAltShift(XKeycode key) {
+        setModifiersSuspended(true);
+        xServer.injectKeyPress(XKeycode.KEY_CTRL_R);
+        xServer.injectKeyPress(XKeycode.KEY_ALT_R);
+        xServer.injectKeyPress(XKeycode.KEY_SHIFT_R);
+        xServer.injectKeyPress(key);
+        xServer.injectKeyRelease(key);
+        xServer.injectKeyRelease(XKeycode.KEY_SHIFT_R);
+        xServer.injectKeyRelease(XKeycode.KEY_ALT_R);
+        xServer.injectKeyRelease(XKeycode.KEY_CTRL_R);
+        setModifiersSuspended(false);
+    }
 
     /**
      * Lets go of the trigger modifiers while the bottom pad types a chat command, so "/" isn't
@@ -650,10 +809,17 @@ public class ConsolePortController {
             if (active) rightIdleSince = 0;
             else if (rightIdleSince == 0) rightIdleSince = now;
 
+            // While a spell waits to be placed on the ground, the right stick moves the cursor
+            // (and the circle with it); afterwards the camera again, from the middle of the screen.
+            boolean placing = checkPlacing();
+            boolean pointer = pointerMode || placing;
+
             if (active && !touchBlocksCamera() && now >= turningUntil) {
-                float speed = pointerMode ? POINTER_SPEED
+                float speed = placing && !pointerMode
+                    ? POINTER_SPEED * app.gamenative.externaldisplay.PadSettings.INSTANCE.placingSpeedFactor()
+                    : pointer ? POINTER_SPEED
                     : CAMERA_SPEED * app.gamenative.externaldisplay.PadSettings.INSTANCE.cameraSpeedFactor();
-                if (!pointerMode && !cameraHeld && orbitMode) {
+                if (!pointer && !cameraHeld && orbitMode) {
                     // WoW's camera-only drag (left button, or NUMPADMULTIPLY bound to it by
                     // ThorControls). Always started from the middle of the screen: a drag
                     // begun with the pointer elsewhere made the camera spin very fast.
@@ -666,7 +832,7 @@ public class ConsolePortController {
                     else xServer.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT);
                     cameraHeld = true;
                 }
-                if (!pointerMode && !cameraHeld) {
+                if (!pointer && !cameraHeld) {
                     cameraKeyHeld = cameraKey;
                     // Until something has put the pointer on the game (a touch does), WoW's
                     // mouselook doesn't re-centre it and the camera spins far too fast. The
@@ -733,6 +899,7 @@ public class ConsolePortController {
     private boolean cameraKeyHeld;
     /** The pointer has been put on the game (by a touch or by the first camera move). */
     private boolean pointerPlaced;
+    private boolean wasPlacing;
 
     public void setCameraKey(boolean useKey) {
         if (cameraHeld) releaseCamera();

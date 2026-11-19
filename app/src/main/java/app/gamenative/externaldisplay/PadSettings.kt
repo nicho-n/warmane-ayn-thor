@@ -105,6 +105,8 @@ object PadSettings {
     val XP_KEYS = setOf(XP_SHOW, XP_TEXT, XP_WIDTH, XP_HEIGHT, XP_X, XP_Y)
     /** Right-stick camera turn speed, percent of the original. */
     const val CAMERA_SPEED = "camera_speed"
+    /** Right-stick cursor speed while placing a ground spell (percent of pointer mode's). */
+    const val PLACING_SPEED = "placing_speed"
     /** Nearby: where enemies fill from, 0 bottom right (friendlies top left), 1 top left. */
     const val NEARBY_ENEMIES_TOP_LEFT = "nearby_enemies_top_left"
     /** Nearby: most enemies / friendlies shown (1-10). */
@@ -178,6 +180,7 @@ object PadSettings {
         MOD_ALT to true,
         SEC_NUMBERS to true,
         CAMERA_SPEED to 100,
+        PLACING_SPEED to 50,
         PARTY_MAX_ENEMIES to 10,
         PARTY_EXTRA_COLUMN to false,
         FOCUS_BAR to true,
@@ -365,6 +368,7 @@ object PadSettings {
 
     /** Right-stick camera speed as a factor (1 = original); for Java, where int() can't be called. */
     fun cameraSpeedFactor(): Float = int(CAMERA_SPEED) / 100f
+    fun placingSpeedFactor(): Float = int(PLACING_SPEED) / 100f
 
     /** [bool] for Java, under the same name pattern as [intValue]. */
     fun boolValue(key: String): Boolean = bool(key)

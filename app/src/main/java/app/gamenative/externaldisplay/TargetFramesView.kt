@@ -23,7 +23,7 @@ import com.winlator.xserver.XServer
  * the WoWMobileLink addon (see [LinkState]) as boxes with class colour, health bar and name.
  * Tapping a box targets that unit by typing /target.
  *
- * The top row: Mode (opens a list of the targeting modes), then Invite, Thank, Sorry, Bags
+ * The top row: Mode (opens a list of the targeting modes), then Invite, Thank, Trade, Bags
  * and Map.
  */
 @SuppressLint("ViewConstructor")
@@ -77,7 +77,8 @@ class TargetFramesView(
     private var builtFor: String? = null
     private val boxes = mutableListOf<UnitBox>()
     private val columnBoxes = mutableListOf<MutableList<UnitBox>>()
-    private val listener: () -> Unit = { refresh() }
+    // The link also runs while another page shows (state only): no redraws then.
+    private val listener: () -> Unit = { if (isShown) refresh() }
     private val tick = object : Runnable {
         override fun run() { refresh(); postDelayed(this, 500) }
     }
@@ -97,7 +98,7 @@ class TargetFramesView(
         listOf<Pair<String, () -> Unit>>(
             "Invite" to { slash("/invite") },
             "Thank" to { slash("/thank") },
-            "Sorry" to { slash("/sorry") },
+            "Trade" to { slash("/wml trade") },
             "Bags" to { key(XKeycode.KEY_B) },
             "Map" to { key(XKeycode.KEY_M) },
         ).forEach { (label, action) ->

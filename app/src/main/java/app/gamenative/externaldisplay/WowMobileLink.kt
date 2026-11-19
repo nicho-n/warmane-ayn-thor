@@ -85,6 +85,12 @@ object LinkState {
     /** Whether the cursor was over a UI frame (not the game world) in the last packet. */
     @Volatile var cursorOverUi = false
         private set
+    /** Whether a spell was waiting to be placed on the ground in the last packet. */
+    @Volatile var spellTargeting = false
+        private set
+
+    /** A spell waits to be placed on the ground (from a packet in the last second). */
+    fun placingSpell() = spellTargeting && System.currentTimeMillis() - lastPacketAt < 1000
     /** Packets received so far (to wait for ones drawn after a cursor move). */
     @Volatile var packets = 0L
         private set
@@ -105,8 +111,9 @@ object LinkState {
         if (records.isNotEmpty()) perPacket = perPacket * 0.8f + records.size * 0.2f
         val rounds = kotlin.math.ceil(total / perPacket.coerceAtLeast(1f)).toLong()
         staleMs = (rounds * PACKET_MS * 2 + 500).coerceIn(MIN_STALE_MS, MAX_STALE_MS)
-        val newMode = rawMode and 127
+        val newMode = rawMode and 63
         cursorOverUi = rawMode and 128 != 0
+        spellTargeting = rawMode and 64 != 0
         packets++
         if (newMode != mode) units.clear()
         mode = newMode
@@ -120,6 +127,7 @@ object LinkState {
     fun clear() {
         units.clear()
         mode = MODE_WORLD
+        spellTargeting = false
         lastPacketAt = 0
         listeners.toList().forEach { it() }
     }

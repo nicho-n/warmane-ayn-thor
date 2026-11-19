@@ -209,6 +209,7 @@ class ExternalPadSettingsView(
         }
         section("Camera", collapsible = true) {
             addView(sliderRow("Right-stick camera speed", PadSettings.CAMERA_SPEED, 25, 300) { "$it%" })
+            addView(sliderRow("Right-stick speed placing a spell", PadSettings.PLACING_SPEED, 10, 150) { "$it%" })
         }
         section("Controller", collapsible = true) {
             addView(cycleRow("Forward jump", PadSettings.FORWARD_JUMP, listOf("Off", "L2 + R1", "R2 + L1", "L2 + L1", "R2 + R1")))
