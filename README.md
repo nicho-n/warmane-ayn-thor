@@ -56,9 +56,10 @@ set of action bar buttons. Other buttons:
 | D-pad | Action bar |
 | L1 | Target nearest enemy |
 | R1 | Jump |
+| L1 + R1 | Look behind you while held |
 | Select | Target nearest friend |
 | Select + L2 | World map |
-| Start | Interact with the unit under the pointer |
+| Start | Left click (places ground spells like Blizzard), then interact with the unit under the pointer |
 | Start + L2 | Game menu |
 | Start + R2 | Raid cursor |
 | Start + L2 + R2 | Open chat |
@@ -67,7 +68,7 @@ set of action bar buttons. Other buttons:
 | A + L2 + R2 | Open all bags |
 | B + L2 + R2 | Utility ring |
 | Left stick | Move. With "Moving backwards rotates character" on: pulled fully back, turn around and run (part way back walks backwards) |
-| Right stick | Camera |
+| Right stick | Camera. While placing a ground spell, it moves the circle instead |
 | R3 | Camera rotate mode: the right stick swings the camera around your character; R3 again puts it back behind you. With "Free camera rotation while strafing" on, it is also on while you strafe. With "Forward moves where the camera looks" on, holding the left stick straight forward ends it and you move where the camera looks |
 | Back | Pointer mode: the right stick moves the pointer, L3 clicks |
 | L3 | Friendly nameplates on/off (a click in pointer mode) |
