@@ -45,7 +45,7 @@
     <string name="wow_addons_done">Addons installed.</string>
     <string name="wow_addons_failed">Couldn\'t install the addons. Any backup made is in the game folder as AddOns-backup-….zip.</string>
     <string name="wow_addons_recommended">Also install recommended addons</string>
-    <string name="wow_addons_recommended_note">Questie, Bagnon, Auctionator, Leatrix Plus, SexyMap, GearScoreLite, BattlegroundTargets, ShadowedUnitFrames (raid frames) and BarKeeper (keeps your action bars apart from other computers you play on), with recommended settings. Your own settings for these addons are kept. Needs an internet connection.</string>
+    <string name="wow_addons_recommended_note">Questie, Bagnon, Auctionator, Leatrix Plus, SexyMap, GearScoreLite, BattlegroundTargets, ShadowedUnitFrames (raid frames), BarKeeper (keeps your action bars apart from other computers you play on) and SortAndMail (Open All in the mailbox), with recommended settings. Your own settings for these addons are kept. Needs an internet connection.</string>
     <string name="wow_addons_downloading">Downloading recommended addons… %1$d%%</string>
     <string name="wow_addons_recommended_failed">The app\'s addons were installed, but the recommended addons couldn\'t be downloaded. Check the internet connection, then choose the game folder again to retry.</string>
     <string name="wow_settings_saved">Settings saved</string>

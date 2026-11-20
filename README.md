@@ -37,9 +37,10 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
   the precision of a mouse.
 - **Recommended addons** (optional, offered when you choose your game folder): Questie,
   Bagnon, Auctionator, Leatrix Plus, SexyMap, GearScoreLite, BattlegroundTargets,
-  ShadowedUnitFrames raid frames and BarKeeper, with recommended settings. WoW keeps action bars on
-  the server, so moving things on a PC moves them on the Thor too; BarKeeper keeps each
-  computer's own (install it on the PC as well).
+  ShadowedUnitFrames raid frames, BarKeeper and SortAndMail, with recommended settings. WoW keeps
+  action bars on the server, so moving things on a PC moves them on the Thor too; BarKeeper keeps
+  each computer's own (install it on the PC as well). SortAndMail adds Open All to the mailbox,
+  and on a PC (without ThorControls) the Bagnon sort button too.
 
 ## Default controller layout
 

@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: SortAndMail
+## Notes: A sort button in Bagnon's bag and bank windows, and an Open All button in the mailbox that takes the gold and items from every mail. Type /sortandmail for commands.
+## Author: nicho-n
+## Version: 1.0
+## OptionalDeps: Bagnon
+
+SortAndMail.lua
