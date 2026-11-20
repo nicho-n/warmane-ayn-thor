@@ -78,6 +78,31 @@ local function applyChat()
     end
 end
 
+-- ShadowedUnitFrames "Show party as raid" (the recommended setup: party frames off, the
+-- raid frames show the party too) didn't work: SUF only tells the raid frames to show a
+-- party when its party frames are on (Units:CheckGroupVisibility needs the party header), so
+-- in a 5-player group, a dungeon, no frames showed at all. Done here when SUF skips it.
+local function fixShadowedPartyAsRaid()
+    local suf = ShadowUF
+    local units = suf and suf.Units
+    if not units or not units.CheckGroupVisibility or not units.headerFrames then return end
+    hooksecurefunc(units, "CheckGroupVisibility", function(self)
+        local profile = suf.db and suf.db.profile
+        if not profile or not profile.locked or InCombatLockdown() then return end
+        local headers, raidConfig = self.headerFrames, profile.units.raid
+        if headers.party or not raidConfig or not raidConfig.showParty then return end
+        if not (suf.enabledUnits and suf.enabledUnits.raid) then return end
+        local raid = headers.raid and not raidConfig.frameSplit and headers.raid or headers.raidParent
+        if not raid then return end
+        local showPlayer = profile.units.party and profile.units.party.showPlayer
+        if showPlayer == nil then showPlayer = true end
+        raid:SetAttribute("showPlayer", showPlayer)
+        raid:SetAttribute("showParty", true)
+    end)
+    -- Frames SUF set up already.
+    if suf.db and not InCombatLockdown() then units:CheckGroupVisibility() end
+end
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -88,6 +113,7 @@ events:SetScript("OnEvent", function(self, event, addon)
         elseif data.addons[addon] then
             applyAddon(addon)
         end
+        if addon == "ShadowedUnitFrames" then fixShadowedPartyAsRaid() end
     elseif event == "PLAYER_ENTERING_WORLD" then
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
         ThorRecommendedChar = ThorRecommendedChar or {}

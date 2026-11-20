@@ -609,7 +609,8 @@ local setSpikes -- section 10
 -- still costs the engine about half a second per cast under emulation, so on
 -- round buttons only ConsolePort's own sweep is started. Square buttons, where
 -- the native sweep is the visible one, keep it. Global cooldowns (hidden by
--- section 9 anyway) start neither.
+-- section 9 anyway) start neither. Each button's sweep and time come from what it
+-- holds now (syncBarCooldowns).
 ---------------------------------------------------------------------------
 -- ConsolePort 1.5.0's cooldown text (CPCC) is keyed by frame name, but the round
 -- sweep passes the frame itself: OnUpdate then errors on every frame while a
@@ -676,10 +677,55 @@ local function fixCooldownText(cpcc)
     end)
 end
 
+-- Which sweep and time each button shows is worked out here from what the button holds now,
+-- 10 times a second, instead of following ConsolePort's start / stop calls: those missed
+-- changes (a trigger swapping a button's action left the old time on the new icon, or a time
+-- that was stopped never came back). barCooldowns: the bar buttons' Cooldown frames, each
+-- with thorStart / thorDuration = the cooldown it shows now (nil: none).
+local barCooldowns, cooldownSync = {}, nil
+
+local function stopBarCooldown(cd, cpapi)
+    cd.thorStart, cd.thorDuration = nil, nil
+    cpapi.RoundCooldown_OnHideCooldown(cd)
+    -- The round sweep's own timer, or it runs on (and flashes when the old cooldown ends).
+    local roundcd = cd:GetParent().roundcd
+    local timer = roundcd and roundcd.spinner and roundcd.spinner.f
+    if timer then timer.timespent = nil end
+    -- ConsolePortBar's SliceMask:StopCooldown leaves the dark swipe showing (it clears the
+    -- wrong table).
+    local container = cd:GetParent()._sliceMaskContainer
+    if container then
+        for _, tex in pairs(container._swipeTextures or {}) do tex:SetAlpha(0) end
+    end
+end
+
+local function syncBarCooldowns(cpapi, start)
+    local now = GetTime()
+    for _, cd in ipairs(barCooldowns) do
+        local button = cd:GetParent()
+        local s, d
+        if button:IsVisible() and button.GetCooldown then
+            local bs, bd, enable = button:GetCooldown()
+            if enable and enable ~= 0 and bs and bd and bd > 0 and bs + bd > now
+                and (bd > GCD_MAX or not (db and db.hideGcd)) then
+                s, d = bs, bd
+            end
+        end
+        if s then
+            if s ~= cd.thorStart or d ~= cd.thorDuration then
+                cd.thorStart, cd.thorDuration = s, d
+                start(cd, s, d)
+            end
+        elseif cd.thorStart then
+            stopBarCooldown(cd, cpapi)
+        end
+    end
+end
+
 local function fixBarCooldowns()
     local cpapi = ConsolePort and ConsolePort.GetData and ConsolePort:GetData().CPAPI
-    local hook = cpapi and cpapi.RoundCooldown_OnSetCooldown
-    if not hook then return end
+    local start = cpapi and cpapi.RoundCooldown_OnSetCooldown
+    if not start then return end
     fixCooldownText(cpapi.CPCC)
     local f = EnumerateFrames()
     while f do
@@ -701,35 +747,29 @@ local function fixBarCooldowns()
                     if self._lastValue ~= last then sf:UpdateScrollChildRect() end
                 end
             end
-            -- Without a native cooldown running, the Cooldown frame hides itself at
-            -- once, and ConsolePort's OnHide then clears its own sweep and timer. Only
-            -- let that through when the button's spell really is off cooldown. The global
-            -- cooldown's sweep too, unless it is turned off (/thor gcd off): it used to stop
-            -- part of the way round.
-            local onHide = cd:GetScript("OnHide")
-            cd:SetScript("OnHide", function(self, ...)
-                local now = GetTime()
-                local button = self:GetParent()
-                if button and button.GetCooldown then
-                    local s, d = button:GetCooldown()
-                    if s and d and d > 0 and (d > GCD_MAX or not (db and db.hideGcd)) and s + d > now + 0.05 then return end
-                end
-                if onHide then return onHide(self, ...) end
-            end)
+            -- ConsolePort's own start / stop / show calls: syncBarCooldowns does all of it.
+            -- Square buttons still run the native sweep, their visible one.
+            cd:SetScript("OnShow", nil)
+            cd:SetScript("OnHide", nil)
             local native = getmetatable(cd).__index.SetCooldown
-            cd.SetCooldown = function(self, start, duration, ...)
-                -- Global cooldown: no sweep work (section 9 hides it, unless a real
-                -- cooldown is still running on this button).
-                if db and db.hideGcd and duration and duration > 0 and duration <= GCD_MAX then return end
-                -- Same cooldown again (events repeat it): leave the running sweep alone.
-                if self.thorStart == start and self.thorEnd and self.thorEnd > GetTime() then return end
-                self.thorStart, self.thorEnd = start, (start or 0) + (duration or 0)
+            cd.SetCooldown = function(self, s, d, ...)
+                if db and db.hideGcd and d and d > 0 and d <= GCD_MAX then return end
                 local button = self:GetParent()
-                if button and button.isSquareMode then native(self, start, duration, ...) end
-                hook(self, start, duration)
+                if button and button.isSquareMode then native(self, s, d, ...) end
             end
+            table.insert(barCooldowns, cd)
         end
         f = EnumerateFrames(f)
+    end
+    if not cooldownSync and #barCooldowns > 0 then
+        local wait = 0
+        cooldownSync = CreateFrame("Frame")
+        cooldownSync:SetScript("OnUpdate", function(_, elapsed)
+            wait = wait - elapsed
+            if wait > 0 then return end
+            wait = 0.1
+            syncBarCooldowns(cpapi, start)
+        end)
     end
 end
 
@@ -1189,6 +1229,28 @@ local MOD_ANCHOR = {
 }
 local MOD_LABEL_SIZE = 24
 local modLabels, modTicker = {}, nil
+local mainButtons = {}
+-- ConsolePortBar's pressed ring (FakePushed) is shown on a button's down click and hidden on
+-- its up click, but only for the trigger state at that moment: an up click in another state
+-- (or one that never arrives) left it showing for good. Any up click now hides all of the
+-- button's rings, and a ring still showing after 2 s is hidden.
+local function hideRings(main)
+    main.thorPushedAt = nil
+    if main.FakePushed then main.FakePushed:SetAlpha(0) end
+    for _, shim in pairs(main.tripleShims or {}) do
+        if shim.FakePushed then shim.FakePushed:SetAlpha(0) end
+    end
+end
+local function fixPushedRing(main)
+    main:HookScript("PreClick", function(_, _, down)
+        if down then main.thorPushedAt = GetTime() else hideRings(main) end
+    end)
+end
+local function clearStuckRings(now)
+    for _, main in ipairs(mainButtons) do
+        if main.thorPushedAt and now - main.thorPushedAt > 2 then hideRings(main) end
+    end
+end
 local function modTime(remaining)
     if remaining >= 60 then
         local s = math.ceil(remaining)
@@ -1221,6 +1283,7 @@ local function placeModLabel(f)
 end
 local function updateModLabels()
     local now = GetTime()
+    clearStuckRings(now)
     for _, f in ipairs(modLabels) do
         local main, show = f.main, false
         if db and not db.hideModCooldowns and main:IsVisible() and main:GetAttribute("state") ~= f.mod
@@ -1250,6 +1313,8 @@ local function findModifierButtons()
             and f.GetAction and f.GetAttribute and f:GetAttribute("modifier") == "" then
             known[f] = true
             for _, mod in ipairs(MOD_STATES) do table.insert(modLabels, newModLabel(f, mod)) end
+            table.insert(mainButtons, f)
+            fixPushedRing(f)
         end
         f = EnumerateFrames(f)
     end

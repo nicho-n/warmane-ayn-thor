@@ -1,8 +1,8 @@
 ## Interface: 30300
 ## Title: Thor Recommended Settings
-## Notes: Recommended settings for the Warmane Ayn Thor app's recommended addons. Fills in each addon's settings only where it has none yet.
+## Notes: Recommended settings for the Warmane Ayn Thor app's recommended addons. Fills in each addon's settings only where it has none yet, and makes ShadowedUnitFrames' party-as-raid frames show in dungeons.
 ## Author: nicho-n
-## Version: 1.0
+## Version: 1.1
 ## SavedVariablesPerCharacter: ThorRecommendedChar
 
 Data.lua

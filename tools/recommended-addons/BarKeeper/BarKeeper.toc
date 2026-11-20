@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: BarKeeper
+## Notes: Keeps this computer's action bars: WoW keeps them on the server, so changes made on another computer (or the Thor) would show up here too. BarKeeper puts this computer's back at login. Type /barkeeper for options.
+## Author: nicho-n
+## Version: 1.0
+## SavedVariablesPerCharacter: BarKeeperDB
+
+BarKeeper.lua

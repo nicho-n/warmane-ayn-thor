@@ -36,8 +36,10 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
   rotates your character 180 degrees, and strafing enables free look. A movement setup that rivals
   the precision of a mouse.
 - **Recommended addons** (optional, offered when you choose your game folder): Questie,
-  Bagnon, Auctionator, Leatrix Plus, SexyMap, GearScoreLite, BattlegroundTargets and
-  ShadowedUnitFrames raid frames, with recommended settings.
+  Bagnon, Auctionator, Leatrix Plus, SexyMap, GearScoreLite, BattlegroundTargets,
+  ShadowedUnitFrames raid frames and BarKeeper, with recommended settings. WoW keeps action bars on
+  the server, so moving things on a PC moves them on the Thor too; BarKeeper keeps each
+  computer's own (install it on the PC as well).
 
 ## Default controller layout
 
