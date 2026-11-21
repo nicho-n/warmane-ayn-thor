@@ -315,6 +315,10 @@ end
 -- with that name showing up in that time gets it back if no plate on screen has it. Dead
 -- units (health 0) aren't remembered.
 local plateNum, heldNum, NUM_HOLD = {}, {}, 20
+-- For its first NUM_BLOCK seconds a remembered number is kept from other mobs too: plates drop
+-- out for a moment (camera turned, something in the way), and a mob appearing then took the
+-- number, so the one coming back went from 1 to 2. After that only plates on screen hold one.
+local NUM_BLOCK = 3
 
 -- Each number has its own colour: 1 yellow, 2 cyan, 3 pink... No green or red: those read as
 -- the mob's reaction. The app's boxes use the same list (NUMBER_COLORS in TargetFramesView.kt).
@@ -544,8 +548,12 @@ local function platesShown()
     end
     -- New plates, nearest first (the closest tends to be 1): a remembered unit of that name
     -- gets its number back if it's free (same level first, then nearest health), else the
-    -- lowest number no plate on screen has.
+    -- lowest number no plate on screen has, nor a unit that left in the last NUM_BLOCK s.
     table.sort(found, function(a, b) return a.y < b.y end)
+    local blocked = {}
+    for _, list in pairs(heldNum) do
+        for hn, h in pairs(list) do if now - h.since <= NUM_BLOCK then blocked[hn] = true end end
+    end
     for _, r in ipairs(found) do
         if numbered(r) and not keep[r.frame] then
             local list, n = heldNum[r.name], nil
@@ -561,7 +569,7 @@ local function platesShown()
             end
             if not n then
                 n = 1
-                while taken[n] do n = n + 1 end
+                while taken[n] or blocked[n] do n = n + 1 end
             end
             taken[n] = true
             keep[r.frame] = { name = r.name, n = n, level = r.level, hp = r.hp }

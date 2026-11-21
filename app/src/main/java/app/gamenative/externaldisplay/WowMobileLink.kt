@@ -118,7 +118,14 @@ object LinkState {
     fun addListener(l: () -> Unit) { listeners += l }
     fun removeListener(l: () -> Unit) { listeners -= l }
 
-    fun unit(slot: Int): LinkUnit? = units[slot]?.takeIf { System.currentTimeMillis() - it.seenAt < staleMs }
+    fun unit(slot: Int): LinkUnit? {
+        val now = System.currentTimeMillis()
+        val u = units[slot]?.takeIf { now - it.seenAt < staleMs } ?: return null
+        // A numbered mob that moved to another box: its old box lingers until it goes stale,
+        // and showed it twice. Numbers are unique, so the newer box with its name and number wins.
+        if (u.number > 0 && units.values.any { it !== u && it.number == u.number && it.name == u.name && it.seenAt > u.seenAt && now - it.seenAt < staleMs }) return null
+        return u
+    }
 
     /** A quest log packet came in: the link is up, though there are no units in it. */
     internal fun touch() { lastPacketAt = System.currentTimeMillis(); packets++; setKind(KIND_QUESTS) }
