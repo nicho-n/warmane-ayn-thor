@@ -308,15 +308,26 @@ local function plateNameLevel(f)
     return name, region, level
 end
 
--- Units sharing a name get a number, "(1)", "(2)"..., shown left of the name on their
--- plate and on the app's box. A plate keeps its number while shown with the same name.
+-- Units sharing a name get a number, "1.", "2."..., each in its own colour, shown above the top left of their
+-- plate and in the top-left corner of the app's box. A plate keeps its number while shown with the same name.
 -- WoW 3.3.5 plates carry no unit id and are reused, so when a plate goes away (camera
 -- turned, out of range) its number is reserved for NUM_HOLD seconds (heldNum); a plate
 -- with that name showing up in that time gets it back. Dead units (health 0) give theirs
 -- up at once.
 local plateNum, heldNum, NUM_HOLD = {}, {}, 20
 
-local function showNumber(f, nameRegion, num)
+-- Each numbered plate on screen has its own colour (1 Lion, 1 Bear and 2 Bear all differ), kept
+-- while it's shown. No green or red: those read as the mob's reaction. The app's boxes use the
+-- same list (NUMBER_COLORS in TargetFramesView.kt), told the index with the number.
+local NUMBER_COLORS = {
+    { 1, 0.82, 0 }, { 0.2, 0.87, 1 }, { 1, 0.4, 0.8 }, { 1, 1, 1 },
+    { 1, 0.6, 0.2 }, { 0.7, 0.6, 1 }, { 0.4, 0.64, 1 }, { 1, 0.8, 0.6 },
+}
+
+-- The number sits above the health bar's top-left corner (the level is at its top right), in
+-- the name's font. [bar]: the health bar shown (NotPlater's own, or the plate's). [color]: an
+-- index into NUMBER_COLORS.
+local function showNumber(f, nameRegion, num, bar, color)
     if num == 0 then
         if f.wmlNum then f.wmlNum:Hide() end
         return
@@ -326,13 +337,14 @@ local function showNumber(f, nameRegion, num)
     local label = f.wmlNum
     if not label then
         label = f:CreateFontString(nil, "OVERLAY")
-        label:SetTextColor(1, 0.82, 0)
         f.wmlNum = label
     end
-    if label.anchor ~= anchor then
-        label.anchor = anchor
+    local corner = bar or anchor
+    if label.corner ~= corner then
+        label.corner = corner
         label:ClearAllPoints()
-        label:SetPoint("RIGHT", anchor, "LEFT", -2, 0)
+        if bar then label:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, 1)
+        else label:SetPoint("RIGHT", anchor, "LEFT", -2, 0) end
     end
     -- Only touch the label when something changed.
     local font, size, outline = anchor:GetFont()
@@ -342,7 +354,12 @@ local function showNumber(f, nameRegion, num)
     end
     if label.num ~= num then
         label.num = num
-        label:SetText("(" .. num .. ")")
+        label:SetText(num .. ".")
+    end
+    if label.color ~= color then
+        label.color = color
+        local c = NUMBER_COLORS[color] or NUMBER_COLORS[1]
+        label:SetTextColor(c[1], c[2], c[3])
     end
     if not label:IsShown() then label:Show() end
 end
@@ -491,7 +508,7 @@ local function platesShown()
                     px = math.max(1, math.min(255, math.floor(cx * scale / UIParent:GetWidth() * 255 + 0.5)))
                     py = math.max(1, math.min(255, math.floor((1 - cy * scale / UIParent:GetHeight()) * 255 + 0.5)))
                 end
-                found[#found + 1] = { frame = f, nameRegion = nameRegion, level = level, name = name, hp = hp, class = cls, flags = flags, y = f:GetBottom() or 0, px = px, py = py,
+                found[#found + 1] = { frame = f, nameRegion = nameRegion, bar = (shown and shown.IsShown and shown:IsShown()) and shown or bar, level = level, name = name, hp = hp, class = cls, flags = flags, y = f:GetBottom() or 0, px = px, py = py,
                     hpAmount = math.floor(bar:GetValue() or 0) }
             elseif f.wmlNum then
                 f.wmlNum:Hide()
@@ -518,7 +535,7 @@ local function platesShown()
     for f, p in pairs(plateNum) do
         if not keep[f] and p.hp ~= 0 then
             heldNum[p.name] = heldNum[p.name] or {}
-            heldNum[p.name][p.n] = { since = now, level = p.level, hp = p.hp }
+            heldNum[p.name][p.n] = { since = now, level = p.level, hp = p.hp, color = p.color }
         end
     end
     for name, list in pairs(heldNum) do
@@ -531,33 +548,59 @@ local function platesShown()
     -- reserved number for that name if there is one (same level first, then nearest
     -- health), else the lowest number neither shown nor reserved.
     table.sort(found, function(a, b) return a.y < b.y end)
+    local heldColor
     for _, r in ipairs(found) do
         if not keep[r.frame] then
             local list, n = heldNum[r.name], nil
             if list then
-                local bestScore
+                local bestScore, color
                 for hn, h in pairs(list) do
                     local score = (h.level == r.level and 0 or 1000) + math.abs((h.hp or 0) - r.hp)
-                    if not bestScore or score < bestScore then n, bestScore = hn, score end
+                    if not bestScore or score < bestScore then n, bestScore, color = hn, score, h.color end
                 end
-                if n then list[n] = nil end
+                if n then list[n] = nil; heldColor = color end
             end
             if not n then
                 n = 1
                 while (taken[r.name] and taken[r.name][n]) or (list and list[n]) do n = n + 1 end
             end
             take(r.name, n)
-            keep[r.frame] = { name = r.name, n = n, level = r.level, hp = r.hp }
+            -- A unit coming back gets its colour back too.
+            keep[r.frame] = { name = r.name, n = n, level = r.level, hp = r.hp, color = heldColor }
+            heldColor = nil
         end
         r.n = keep[r.frame].n
     end
     plateNum = keep
     -- Hostile and neutral NPCs show their number, starting at (1); players and friendly
     -- NPCs don't (their names are unique, or nearly).
+    -- Each gets a colour no other shown plate has (the lowest free), kept while it's shown.
+    -- A unit whose plate went away keeps its number, and still shows in its box, so its
+    -- colour stays taken too (two boxes showed the same yellow). Sent with the number:
+    -- number (1-15) + 16 * (colour - 1), within the 7 bits it has.
+    local usedColor = {}
+    for _, list in pairs(heldNum) do
+        for _, h in pairs(list) do if h.color then usedColor[h.color] = true end end
+    end
+    for _, r in ipairs(found) do
+        local p = keep[r.frame]
+        if p.color then usedColor[p.color] = true end
+    end
     for _, r in ipairs(found) do
         local plain = bit.band(r.flags, 32) ~= 0 or bit.band(r.flags, 64) ~= 0
-        r.num = plain and 0 or math.min(r.n, 127)
-        showNumber(r.frame, r.nameRegion, r.num)
+        local p = keep[r.frame]
+        if plain then
+            r.num = 0
+        else
+            if not p.color then
+                local c = 1
+                while usedColor[c] and c < #NUMBER_COLORS do c = c + 1 end
+                p.color = c
+                usedColor[c] = true
+            end
+            r.num = math.min(r.n, 15) + 16 * (p.color - 1)
+        end
+        showNumber(r.frame, r.nameRegion, r.num == 0 and 0 or math.min(r.n, 15), r.bar, p.color)
     end
     -- +128: tap must click this plate, not target by name. Its name is shared with
     -- another plate, or with your target when that isn't this plate (say, a mob of the

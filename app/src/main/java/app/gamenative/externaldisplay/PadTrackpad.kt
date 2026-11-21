@@ -143,7 +143,10 @@ class PadTrackpad(context: Context, private val xServer: XServer, private val th
         setShadowLayer(3f, 0f, 1f, Color.BLACK)
     }
     private val fade = Runnable {
-        animate().alpha(0f).setDuration(200).withEndAction { if (fingers.isEmpty() && !buttonsDown()) { visibility = GONE; alpha = 1f; centerCursor() } }.start()
+        animate().alpha(0f).setDuration(200).withEndAction {
+            // A button got locked meanwhile: stay up (seen), so it can be let go.
+            if (fingers.isEmpty() && !buttonsDown()) { visibility = GONE; alpha = 1f; centerCursor() } else alpha = 1f
+        }.start()
     }
 
     init { visibility = GONE }
@@ -174,7 +177,7 @@ class PadTrackpad(context: Context, private val xServer: XServer, private val th
     }
 
     /** Straight back to the boxes (the X, or the page going away); lets go of any held button. */
-    fun close(center: Boolean = false) {
+    fun close(center: Boolean = true) {
         main.removeCallbacks(fade)
         animate().cancel()
         if (fingers.isNotEmpty()) PadBridge.trackpadTouch(false)
@@ -237,7 +240,7 @@ class PadTrackpad(context: Context, private val xServer: XServer, private val th
                 when (fingers.remove(id)) {
                     TrackpadRole.LEFT -> leftButton.touchUp()
                     TrackpadRole.RIGHT -> rightButton.touchUp()
-                    TrackpadRole.CLOSE -> if (closeRect.contains(ev.getX(i), ev.getY(i))) { close(center = true); return true }
+                    TrackpadRole.CLOSE -> if (closeRect.contains(ev.getX(i), ev.getY(i))) { close(); return true }
                     TrackpadRole.MOVE -> {
                         moveId = -1
                         if (!moved && System.currentTimeMillis() - downAt < TAP_MS) {
@@ -363,7 +366,7 @@ class PadTrackpad(context: Context, private val xServer: XServer, private val th
 
     companion object {
         /** How far a finger slides on a page before it turns into a trackpad (dp). */
-        const val START_DP = 19
+        const val START_DP = 23
         /** How far a finger slides on the trackpad before a touch is no longer a tap (dp). */
         private const val DRAG_START_DP = 14
         /** The trackpad goes back to the page after this long without a touch. */

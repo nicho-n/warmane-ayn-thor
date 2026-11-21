@@ -511,7 +511,8 @@ class TargetFramesView(
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
         private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            typeface = Typeface.create(theme.typeface, Typeface.BOLD)
+            // Sans-serif: easier to read small and at a glance than the pad's serif face.
+            typeface = NAME_FACE
             setShadowLayer(3f, 0f, 1f, Color.BLACK)
         }
         private val rect = RectF()
@@ -590,7 +591,8 @@ class TargetFramesView(
                 else -> (height * 0.42f).coerceAtMost(dp(30).toFloat())
             }
             val textBottom = if (auras.isNotEmpty()) height - rows * (iconSize + gap) - dp(2) else height.toFloat()
-            val textScale = if (auras.isNotEmpty()) 0.30f else 0.40f
+            // About 15% under the old serif sizes: the sans-serif face reads larger.
+            val textScale = if (auras.isNotEmpty()) 0.26f else 0.34f
             if (auras.isNotEmpty()) drawAuras(canvas, auras, iconSize, cols, rows, gap)
             // Health right, name left in the space that's left: shrinks to fit, then "…".
             val hpText = when {
@@ -600,14 +602,21 @@ class TargetFramesView(
                 else -> ""
             }
             val pad = dp(12).toFloat()
-            var size = (height * textScale).coerceAtMost(dp(21).toFloat())
+            // A numbered unit's name starts right after the "." of its number in the corner.
+            val numberText = u.numberText
+            val nameX = if (numberText != null) {
+                text.textSize = NUMBER_SIZE_DP * resources.displayMetrics.density
+                text.typeface = NUMBER_FACE
+                (NUMBER_X_DP * resources.displayMetrics.density + text.measureText(numberText)).also { text.typeface = NAME_FACE }
+            } else pad
+            var size = (height * textScale).coerceAtMost(dp(18).toFloat())
             // Raid Heal mode: health at half the name's size (its boxes are small).
             val hpSize = if (chosen == Mode.RAID_HEAL) size * 0.5f else size
             text.textSize = hpSize
             val hpWidth = text.measureText(hpText)
             text.textSize = size
-            val nameRoom = width - 2 * pad - (if (hpText.isEmpty()) 0f else hpWidth + dp(10))
-            val minSize = dp(if (auras.isNotEmpty()) 11 else 13).toFloat()
+            val nameRoom = width - nameX - pad - (if (hpText.isEmpty()) 0f else hpWidth + dp(10))
+            val minSize = dp(if (auras.isNotEmpty()) 10 else 12).toFloat()
             while (size > minSize && text.measureText(u.label) > nameRoom) { size -= 1f; text.textSize = size }
             var name = u.label
             if (text.measureText(name) > nameRoom) {
@@ -616,7 +625,17 @@ class TargetFramesView(
             }
             val baseline = textBottom / 2f - (text.descent() + text.ascent()) / 2
             text.textAlign = Paint.Align.LEFT
-            canvas.drawText(name, pad, baseline, text)
+            canvas.drawText(name, nameX, baseline, text)
+            // "2.": its number in the top-left corner, in its colour, as on the nameplate.
+            numberText?.let { number ->
+                text.textSize = NUMBER_SIZE_DP * resources.displayMetrics.density
+                text.color = NUMBER_COLORS[u.numberColor]
+                // Bold, so the number stands out from the name.
+                text.typeface = NUMBER_FACE
+                canvas.drawText(number, NUMBER_X_DP * resources.displayMetrics.density, dp(4) - text.ascent(), text)
+                text.typeface = NAME_FACE
+                text.color = Color.WHITE
+            }
             text.textSize = hpSize
             text.textAlign = Paint.Align.RIGHT
             canvas.drawText(hpText, width - pad, textBottom / 2f - (text.descent() + text.ascent()) / 2, text)
@@ -758,3 +777,14 @@ class TargetFramesView(
     }
 }
 
+/** The corner number's size and its left edge (dp); the name starts where it ends. */
+private const val NUMBER_SIZE_DP = 14f
+private val NAME_FACE: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+private val NUMBER_FACE: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+private const val NUMBER_X_DP = 6f
+
+/** The numbers' colours, the same list as NUMBER_COLORS in WoWMobileLink.lua (no green or red). */
+private val NUMBER_COLORS = intArrayOf(
+    0xFFFFD100.toInt(), 0xFF33DDFF.toInt(), 0xFFFF66CC.toInt(), 0xFFFFFFFF.toInt(),
+    0xFFFF9933.toInt(), 0xFFB399FF.toInt(), 0xFF66A3FF.toInt(), 0xFFFFCC99.toInt(),
+)
