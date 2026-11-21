@@ -17,6 +17,9 @@
 --  7. Default bindings: characters without ConsolePort bindings get the layout in
 --     DEFAULT_BINDINGS (Select targets a friend, L1 an enemy, Start interacts with
 --     the unit under the pointer; see README).
+-- 11. Eat & Drink: a macro that uses the best food and the best drink in your bags at once,
+--     kept up to date out of combat. It starts on action bar slot 12 (D-pad right) if that's
+--     empty, and can be dragged anywhere like a spell.
 -- 10. DoT timers on nameplates: NotPlater learns each debuff's duration as it goes, so a
 --     debuff it hasn't learned yet had no timer, and mobs dying early taught it shorter
 --     ones. Common DoTs now have a timer from the first cast (in any client language), and
@@ -130,6 +133,14 @@ local function migrateRunWalk()
             end
         end
     end
+end
+
+-- 1.69 test builds bound D-pad right straight to an Eat & Drink button; it's a macro on the
+-- action bar now (section 11), so D-pad right goes back to action bar slot 12.
+local function undoEatDrinkBinding()
+    local set = type(ConsolePortBindingSet) == "table" and ConsolePortBindingSet[classSetId()]
+    local mods = type(set) == "table" and set.CP_L_RIGHT
+    if type(mods) == "table" and mods[""] == "CLICK ThorEatDrink:LeftButton" then mods[""] = "ACTIONBUTTON12" end
 end
 
 local defaults = { petbar = true, xpShow = true, xpText = false, xpWidth = 100, xpHeight = 11, xpX = 0, xpY = 0, hideTriggers = true, hideTrail = true, defaultCastBar = true, hideGcd = false, petRingLeft = true, petRingScale = 80, bagSort = false, mapArrowScale = 150 }
@@ -1437,6 +1448,7 @@ events:SetScript("OnEvent", function(_, event, arg1)
             applyDefaultBindings()
             db.runWalkMoved = db.runWalkMoved or {}
             local who = (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
+            undoEatDrinkBinding()
             if not db.runWalkMoved[who] then
                 migrateRunWalk()
                 db.runWalkMoved[who] = true
@@ -1821,3 +1833,117 @@ fixNotPlaterDurations()
 local durationFixer = CreateFrame("Frame")
 durationFixer:RegisterEvent("PLAYER_LOGIN")
 durationFixer:SetScript("OnEvent", fixNotPlaterDurations)
+
+-- 11. Eat & Drink: a per-character macro whose /use lines are rewritten from your bags whenever
+-- they change (out of combat; you can't eat in combat anyway), so it can sit on any action
+-- button and be dragged like a spell. Food and drink are told apart by the spell the item casts,
+-- whose name comes from the game, so any client language works: Food, Drink, or Refreshment
+-- (mage food, both at once). The best is the highest required level up to yours; among equals,
+-- the smaller stack, so stacks get used up. /use item:<id> needs no item names either, and
+-- #showtooltip with the question-mark icon shows the food's own icon.
+local EAT_MACRO = "Eat & Drink"
+local EAT_NONE = "/run DEFAULT_CHAT_FRAME:AddMessage('|cff33ff99Thor Controls|r: no food or drink in your bags.')"
+local eatPending = false
+local eatPlaceAt = nil
+
+-- Once per character: the macro onto slot 12 if it's empty, otherwise a word on where it is.
+local function placeEatDrink()
+    eatPlaceAt = nil
+    if InCombatLockdown() or GetCursorInfo() then eatPlaceAt = GetTime() + 5; return end
+    local index = GetMacroIndexByName(EAT_MACRO)
+    if index == 0 then return end
+    local who = (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
+    db.eatDrinkPlaced = db.eatDrinkPlaced or {}
+    if db.eatDrinkPlaced[who] then return end
+    db.eatDrinkPlaced[who] = true
+    if not HasAction(12) then
+        PickupMacro(index)
+        PlaceAction(12)
+        ClearCursor()
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99Thor Controls|r: your Eat & Drink macro is in your macros (/macro); drag it onto a button.")
+    end
+end
+
+local function consumableSpellNames()
+    local food, drink = GetSpellInfo(433), GetSpellInfo(430)
+    -- Refreshment: the spell of Conjured Mana Strudel (only known once the item is cached).
+    local both = GetItemSpell(43523) or ((GetLocale() or ""):sub(1, 2) == "en" and "Refreshment") or nil
+    return food or "Food", drink or "Drink", both
+end
+
+local function eatDrinkBody()
+    local foodName, drinkName, bothName = consumableSpellNames()
+    local level = UnitLevel("player") or 80
+    local best = {}
+    local function better(kind, id, minLevel, count)
+        local b = best[kind]
+        if not b or minLevel > b.minLevel or (minLevel == b.minLevel and count < b.count) then
+            best[kind] = { id = id, minLevel = minLevel, count = count }
+        end
+    end
+    for bag = 0, 4 do
+        for slot = 1, GetContainerNumSlots(bag) do
+            local id = GetContainerItemID(bag, slot)
+            local spell = id and GetItemSpell(id)
+            if spell and (spell == foodName or spell == drinkName or spell == bothName) then
+                local _, _, _, _, minLevel = GetItemInfo(id)
+                minLevel = minLevel or 0
+                if minLevel <= level then
+                    local count = GetItemCount(id)
+                    if spell == foodName then better("food", id, minLevel, count)
+                    elseif spell == drinkName then better("drink", id, minLevel, count)
+                    else better("both", id, minLevel, count) end
+                end
+            end
+        end
+    end
+    -- Refreshment counts as both when it's at least as good as the separate item.
+    local both, food, drink = best.both, best.food, best.drink
+    if both and (not food or both.minLevel >= food.minLevel) then food = both end
+    if both and (not drink or both.minLevel >= drink.minLevel) then drink = both end
+    local lines = { "#showtooltip" }
+    if food then lines[#lines + 1] = "/use item:" .. food.id end
+    if drink and drink ~= food then lines[#lines + 1] = "/use item:" .. drink.id end
+    if #lines == 1 then lines[2] = EAT_NONE end
+    return table.concat(lines, "\n")
+end
+
+local function updateEatDrink()
+    if InCombatLockdown() then eatPending = true; return end
+    eatPending = false
+    local body = eatDrinkBody()
+    local index = GetMacroIndexByName(EAT_MACRO)
+    if index == 0 then
+        -- Per character (18 slots); not made if they're full.
+        local _, perCharacter = GetNumMacros()
+        if (perCharacter or 0) >= 18 then return end
+        index = CreateMacro(EAT_MACRO, 1, body, 1)
+        if not index or index == 0 then return end
+        -- Onto slot 12 (D-pad right) later, once the server's bars are in and BarKeeper has
+        -- put its own back: right after login slot 12 still looks empty, and BarKeeper then
+        -- swapped the macro out again for what was really there.
+        eatPlaceAt = GetTime() + 12
+    else
+        local _, _, current = GetMacroInfo(index)
+        if current ~= body then EditMacro(index, EAT_MACRO, 1, body) end
+    end
+end
+
+local eatEvents = CreateFrame("Frame")
+eatEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
+eatEvents:RegisterEvent("BAG_UPDATE")
+eatEvents:RegisterEvent("PLAYER_LEVEL_UP")
+eatEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
+local eatWait = 0
+-- BAG_UPDATE comes once per bag, often several at a time: update once, a moment later.
+eatEvents:SetScript("OnUpdate", function(self, elapsed)
+    if eatPlaceAt and GetTime() >= eatPlaceAt then placeEatDrink() end
+    if eatWait <= 0 then return end
+    eatWait = eatWait - elapsed
+    if eatWait <= 0 then updateEatDrink() end
+end)
+eatEvents:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_ENABLED" and not eatPending then return end
+    eatWait = event == "PLAYER_ENTERING_WORLD" and 2 or 0.3
+end)

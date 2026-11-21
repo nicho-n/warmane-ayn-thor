@@ -54,7 +54,9 @@ Buttons are named by the letters printed on the Thor (X top, A right, B bottom, 
 with the Thor's controller mode set to **Standard** (its default).
 
 ABXY and the D-pad are action bar buttons; holding L2, R2 or both switches to another
-set of action bar buttons. Other buttons:
+set of action bar buttons. ThorControls adds an **Eat & Drink** macro that always uses the best
+food and drink in your bags at once; it starts on D-pad right (if that button is empty) and can be
+dragged anywhere like a spell. Other buttons:
 
 | Button | Action |
 |---|---|
