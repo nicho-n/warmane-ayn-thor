@@ -29,7 +29,8 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 - **Quest Log:** a Quests page on the bottom screen lists your quests like Questie's tracker,
   in two columns. Tap a quest to read it and track or abandon it; tap a zone to fold it.
 - **Touch screen controls:** button pages, a keyboard and a trackpad on the bottom screen,
-  with the game on the top screen.
+  with the game on the top screen. The gear menu opens a **web browser** on the bottom screen
+  (tap **◀ Pad** in the corner to get the pad back).
 - **Opinionated console controls:** a remappable ConsolePort controller layout, plus **A** to
   play, enter the world and log in, and the **D-pad** to pick a character.
 - **Enhanced Movement Mode** (off by default, turn it on under Settings > Movement): backpedalling

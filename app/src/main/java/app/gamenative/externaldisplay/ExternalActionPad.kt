@@ -46,6 +46,8 @@ class ExternalActionPad(
     private lateinit var textEntryPanel: LinearLayout
     private lateinit var padView: ExternalActionBarView
     private var settingsOpen = false
+    /** Set by the bottom-screen window: opens the phone's web browser on the bottom screen. */
+    var onOpenBrowser: (() -> Unit)? = null
     private var currentPage = 0
     private val pageTabs = mutableListOf<TextView>()
     private var settingsVersion = 0
@@ -822,7 +824,7 @@ class ExternalActionPad(
         }
     }
 
-    /** A small menu above the gear: Open settings, Reload, Log out and Exit game (/reload, /logout, /quit in the game). */
+    /** A small menu above the gear: Open settings, Web browser, Reload, Log out and Exit game (/reload, /logout, /quit in the game). */
     private fun showSettingsMenu() {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
@@ -852,6 +854,10 @@ class ExternalActionPad(
             }
         }
         menu.addView(item("Open settings") { setSettings(true) })
+        onOpenBrowser?.let { open ->
+            menu.addView(item("Web browser") { open() },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+        }
         menu.addView(item("Reload") { SlashTyper.type(xServer, "/reload", { suspendModifiers() }, { resumeModifiers(it) }) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
         // Back to the character screen (WoW's own 20-second countdown applies outside rest areas).

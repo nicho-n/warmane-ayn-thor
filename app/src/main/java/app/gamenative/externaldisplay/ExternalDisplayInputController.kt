@@ -1,6 +1,11 @@
 package app.gamenative.externaldisplay
 
+import android.app.Activity
+import android.app.ActivityManager
+import android.app.ActivityOptions
 import android.app.Presentation
+import android.content.Intent
+import android.net.Uri
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
@@ -14,6 +19,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.winlator.R
 import com.winlator.widget.TouchpadView
@@ -104,10 +110,20 @@ class ExternalDisplayInputController(
                 mode = mode,
                 xServer = xServer,
                 touchpadViewProvider = touchpadViewProvider,
+                bringGameToFront = { bringGameToFront() },
             )
             presentation?.show()
         } else {
             presentation?.updateMode(mode)
+        }
+    }
+
+    /** Gives the game back the controller (Android sends it to the screen that was used last). */
+    private fun bringGameToFront() {
+        val activity = context as? Activity ?: return
+        try {
+            context.getSystemService(ActivityManager::class.java)?.moveTaskToFront(activity.taskId, 0)
+        } catch (_: Exception) {
         }
     }
 
@@ -133,7 +149,11 @@ private class ExternalInputPresentation(
     private var mode: ExternalDisplayInputController.Mode,
     private val xServer: XServer,
     private val touchpadViewProvider: () -> TouchpadView?,
+    private val bringGameToFront: () -> Unit,
 ) : Presentation(context, display) {
+
+    private var pad: ExternalActionPad? = null
+    private var browserOpen = false
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -149,6 +169,67 @@ private class ExternalInputPresentation(
             mode = newMode
             renderContent()
         }
+    }
+
+    /**
+     * wow-mobile: opens the web browser on the bottom screen. The pad is drawn above every app on this screen,
+     * so while the browser is open it shrinks to a small "Back to pad" button in the bottom-left corner.
+     */
+    private fun openBrowser() {
+        val options = ActivityOptions.makeBasic().setLaunchDisplayId(display.displayId).toBundle()
+        val browser = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val fallback = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val started = listOf(browser, fallback).any { intent ->
+            try {
+                context.startActivity(intent, options)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+        if (started) showBackButton()
+    }
+
+    private fun showBackButton() {
+        browserOpen = true
+        val density = context.resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        val theme = PadTheme.DEFAULT
+        val button = TextView(context).apply {
+            text = "◀ Pad"
+            setTextColor(theme.text)
+            typeface = theme.typeface
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply {
+                setColor(android.graphics.Color.argb(220, 24, 21, 18))
+                cornerRadius = 12 * density
+                setStroke(dp(2), theme.border)
+            }
+            setOnClickListener { showPad() }
+        }
+        setContentView(button)
+        window?.apply {
+            setLayout(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.START or Gravity.BOTTOM)
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        }
+    }
+
+    /** Back from the browser: the full pad again (the browser keeps running underneath) and the game gets the controller. */
+    private fun showPad() {
+        browserOpen = false
+        window?.apply {
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK))
+        }
+        val p = pad
+        if (p != null && mode == ExternalDisplayInputController.Mode.BUTTONS) setContentView(p) else renderContent()
+        bringGameToFront()
     }
 
     private fun renderContent() {
@@ -205,7 +286,10 @@ private class ExternalInputPresentation(
                 setContentView(hybrid)
             }
             ExternalDisplayInputController.Mode.BUTTONS -> {
-                setContentView(ExternalActionPad(context, xServer, PadTheme.DEFAULT, touchpadViewProvider))
+                val p = ExternalActionPad(context, xServer, PadTheme.DEFAULT, touchpadViewProvider)
+                p.onOpenBrowser = { openBrowser() }
+                pad = p
+                if (browserOpen) showPad() else setContentView(p)
             }
             else -> {
                 setContentView(FrameLayout(context))
