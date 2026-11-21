@@ -308,17 +308,16 @@ local function plateNameLevel(f)
     return name, region, level
 end
 
--- Units sharing a name get a number, "1.", "2."..., each in its own colour, shown above the top left of their
+-- Hostile and neutral NPCs are numbered "1.", "2."..., each number in its own colour, shown above the top left of their
 -- plate and in the top-left corner of the app's box. A plate keeps its number while shown with the same name.
 -- WoW 3.3.5 plates carry no unit id and are reused, so when a plate goes away (camera
--- turned, out of range) its number is reserved for NUM_HOLD seconds (heldNum); a plate
--- with that name showing up in that time gets it back. Dead units (health 0) give theirs
--- up at once.
+-- turned, out of range) its number is remembered for NUM_HOLD seconds (heldNum); a plate
+-- with that name showing up in that time gets it back if no plate on screen has it. Dead
+-- units (health 0) aren't remembered.
 local plateNum, heldNum, NUM_HOLD = {}, {}, 20
 
--- Each numbered plate on screen has its own colour (1 Lion, 1 Bear and 2 Bear all differ), kept
--- while it's shown. No green or red: those read as the mob's reaction. The app's boxes use the
--- same list (NUMBER_COLORS in TargetFramesView.kt), told the index with the number.
+-- Each number has its own colour: 1 yellow, 2 cyan, 3 pink... No green or red: those read as
+-- the mob's reaction. The app's boxes use the same list (NUMBER_COLORS in TargetFramesView.kt).
 local NUMBER_COLORS = {
     { 1, 0.82, 0 }, { 0.2, 0.87, 1 }, { 1, 0.4, 0.8 }, { 1, 1, 1 },
     { 1, 0.6, 0.2 }, { 0.7, 0.6, 1 }, { 0.4, 0.64, 1 }, { 1, 0.8, 0.6 },
@@ -515,92 +514,64 @@ local function platesShown()
             end
         end
     end
-    -- Number units that share a name (see plateNum).
+    -- Number the hostile and neutral NPCs on screen 1, 2, 3..., whatever their names (players
+    -- and friendly NPCs aren't numbered). A plate keeps its number while it's shown. A unit
+    -- whose plate went away (camera turned, out of range) is remembered for NUM_HOLD seconds
+    -- (heldNum) and gets its number back if it shows again and no plate on screen has taken
+    -- it meanwhile: only plates on screen hold a number, so a lone mob is always 1. Each
+    -- number has its own colour (NUMBER_COLORS).
     local now = GetTime()
     local keep, taken = {}, {}
-    local function take(name, n)
-        taken[name] = taken[name] or {}
-        taken[name][n] = true
-    end
+    local function numbered(r) return bit.band(r.flags, 32) == 0 and bit.band(r.flags, 64) == 0 end
     for _, r in ipairs(found) do
         local p = plateNum[r.frame]
-        if p and p.name == r.name and not (taken[r.name] and taken[r.name][p.n]) then
+        if numbered(r) and p and p.name == r.name and not taken[p.n] then
             p.level, p.hp = r.level, r.hp
             keep[r.frame] = p
-            take(r.name, p.n)
+            taken[p.n] = true
         end
     end
-    -- Plates gone since last time: the number stays reserved for that unit (see heldNum),
-    -- unless it died (health 0).
+    -- Plates gone since last time: remember the unit's number, unless it died (health 0).
     for f, p in pairs(plateNum) do
         if not keep[f] and p.hp ~= 0 then
             heldNum[p.name] = heldNum[p.name] or {}
-            heldNum[p.name][p.n] = { since = now, level = p.level, hp = p.hp, color = p.color }
+            heldNum[p.name][p.n] = { since = now, level = p.level, hp = p.hp }
         end
     end
     for name, list in pairs(heldNum) do
-        for n, h in pairs(list) do
-            if now - h.since > NUM_HOLD or (taken[name] and taken[name][n]) then list[n] = nil end
-        end
+        for n, h in pairs(list) do if now - h.since > NUM_HOLD then list[n] = nil end end
         if not next(list) then heldNum[name] = nil end
     end
-    -- New plates, nearest first (the closest of a new group tends to be (1)): take back a
-    -- reserved number for that name if there is one (same level first, then nearest
-    -- health), else the lowest number neither shown nor reserved.
+    -- New plates, nearest first (the closest tends to be 1): a remembered unit of that name
+    -- gets its number back if it's free (same level first, then nearest health), else the
+    -- lowest number no plate on screen has.
     table.sort(found, function(a, b) return a.y < b.y end)
-    local heldColor
     for _, r in ipairs(found) do
-        if not keep[r.frame] then
+        if numbered(r) and not keep[r.frame] then
             local list, n = heldNum[r.name], nil
             if list then
-                local bestScore, color
+                local bestScore
                 for hn, h in pairs(list) do
-                    local score = (h.level == r.level and 0 or 1000) + math.abs((h.hp or 0) - r.hp)
-                    if not bestScore or score < bestScore then n, bestScore, color = hn, score, h.color end
+                    if not taken[hn] then
+                        local score = (h.level == r.level and 0 or 1000) + math.abs((h.hp or 0) - r.hp)
+                        if not bestScore or score < bestScore then n, bestScore = hn, score end
+                    end
                 end
-                if n then list[n] = nil; heldColor = color end
+                if n then list[n] = nil end
             end
             if not n then
                 n = 1
-                while (taken[r.name] and taken[r.name][n]) or (list and list[n]) do n = n + 1 end
+                while taken[n] do n = n + 1 end
             end
-            take(r.name, n)
-            -- A unit coming back gets its colour back too.
-            keep[r.frame] = { name = r.name, n = n, level = r.level, hp = r.hp, color = heldColor }
-            heldColor = nil
+            taken[n] = true
+            keep[r.frame] = { name = r.name, n = n, level = r.level, hp = r.hp }
         end
-        r.n = keep[r.frame].n
+        r.n = keep[r.frame] and keep[r.frame].n or 0
     end
     plateNum = keep
-    -- Hostile and neutral NPCs show their number, starting at (1); players and friendly
-    -- NPCs don't (their names are unique, or nearly).
-    -- Each gets a colour no other shown plate has (the lowest free), kept while it's shown.
-    -- A unit whose plate went away keeps its number, and still shows in its box, so its
-    -- colour stays taken too (two boxes showed the same yellow). Sent with the number:
-    -- number (1-15) + 16 * (colour - 1), within the 7 bits it has.
-    local usedColor = {}
-    for _, list in pairs(heldNum) do
-        for _, h in pairs(list) do if h.color then usedColor[h.color] = true end end
-    end
     for _, r in ipairs(found) do
-        local p = keep[r.frame]
-        if p.color then usedColor[p.color] = true end
-    end
-    for _, r in ipairs(found) do
-        local plain = bit.band(r.flags, 32) ~= 0 or bit.band(r.flags, 64) ~= 0
-        local p = keep[r.frame]
-        if plain then
-            r.num = 0
-        else
-            if not p.color then
-                local c = 1
-                while usedColor[c] and c < #NUMBER_COLORS do c = c + 1 end
-                p.color = c
-                usedColor[c] = true
-            end
-            r.num = math.min(r.n, 15) + 16 * (p.color - 1)
-        end
-        showNumber(r.frame, r.nameRegion, r.num == 0 and 0 or math.min(r.n, 15), r.bar, p.color)
+        r.num = math.min(r.n, 127)
+        showNumber(r.frame, r.nameRegion, r.num, r.bar, (r.n - 1) % #NUMBER_COLORS + 1)
     end
     -- +128: tap must click this plate, not target by name. Its name is shared with
     -- another plate, or with your target when that isn't this plate (say, a mob of the

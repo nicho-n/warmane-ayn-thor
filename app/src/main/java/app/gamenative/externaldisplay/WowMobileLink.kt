@@ -39,10 +39,10 @@ data class LinkUnit(val slot: Int, val classId: Int, val hp: Int, val flags: Int
         slot == FOCUS_SLOT -> "Focus: $name"
         else -> name
     }
-    /** Its plate number (0 none): the low 4 bits; the next 3 are its colour (see [numberColor]). */
-    val number get() = if (slot == FOCUS_SLOT || slot in RAID_SLOTS) 0 else num and 15
-    /** Its number's colour, an index into the addon's list (0-7), the same as on its plate. */
-    val numberColor get() = (num shr 4) and 7
+    /** Its plate number (0 none). */
+    val number get() = if (slot == FOCUS_SLOT || slot in RAID_SLOTS) 0 else num and 127
+    /** Its number's colour, an index into the addon's list (one per number, round again after 8), as on its plate. */
+    val numberColor get() = (number - 1).coerceAtLeast(0) % 8
     /** "2." in the box's top-left corner, as on its plate, or null. */
     val numberText get() = if (number > 0) "$number." else null
     /** Raid slots (100-124, raid1-25): the raid group, 1-8. */
