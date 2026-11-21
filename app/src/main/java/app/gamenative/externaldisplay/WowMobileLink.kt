@@ -34,7 +34,7 @@ data class LinkAura(val icon: Int, val time: Int, val kind: Int, val receivedAt:
 data class LinkUnit(val slot: Int, val classId: Int, val hp: Int, val flags: Int, val name: String, val seenAt: Long, val plateX: Int = 0, val plateY: Int = 0, val num: Int = 0,
                     /** Current health, -1 unknown (protocol 4). */
                     val hpAmount: Int = -1, val auras: List<LinkAura> = emptyList()) {
-    /** Name as shown (the number of units sharing a name is drawn apart, see [numberText]). */
+    /** Name as shown (its number is drawn apart, in the box's tab). */
     val label get() = when {
         slot == FOCUS_SLOT -> "Focus: $name"
         else -> name
@@ -43,8 +43,6 @@ data class LinkUnit(val slot: Int, val classId: Int, val hp: Int, val flags: Int
     val number get() = if (slot == FOCUS_SLOT || slot in RAID_SLOTS) 0 else num and 127
     /** Its number's colour, an index into the addon's list (one per number, round again after 8), as on its plate. */
     val numberColor get() = (number - 1).coerceAtLeast(0) % 8
-    /** "2." in the box's top-left corner, as on its plate, or null. */
-    val numberText get() = if (number > 0) "$number." else null
     /** Raid slots (100-124, raid1-25): the raid group, 1-8. */
     val raidGroup get() = if (slot in RAID_SLOTS) num and 127 else 0
     /** The addon says a tap must click the plate (name shared with another plate or with an off-screen target). */

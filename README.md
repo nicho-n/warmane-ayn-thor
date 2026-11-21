@@ -25,8 +25,8 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 - **Touch targeting:** a page on the bottom screen lists nearby units, your party, your
   raid (Raid Heal mode), battleground or arena players; tap one to target it. Each box shows
   important buffs and debuffs with timers (crowd control, immunities, your own DoTs, debuffs
-  you can dispel, buffs you can purge). Mobs on screen are numbered 1., 2., 3. on their nameplate
-  and in their box, each number in its own colour, so you can tell which box is which mob. Slide a finger on the boxes to use them as a trackpad,
+  you can dispel, buffs you can purge). Mobs on screen are numbered 1., 2., 3. on their nameplate,
+  and their box has a tab in that number's colour, so you can tell which box is which mob. Slide a finger on the boxes to use them as a trackpad,
   with Left click and Right click in the bottom corners. The Interface, Utility and Quests
   pages do the same; with it on, their buttons press when you lift your finger.
 - **Quest Log:** a Quests page on the bottom screen lists your quests like Questie's tracker,

@@ -571,10 +571,39 @@ class TargetFramesView(
             canvas.clipRect(0f, 0f, width * frac, height.toFloat())
             canvas.drawRoundRect(rect, r, r, fill)
             canvas.restore()
-            // Border: yellow for your target, black for the rest.
+            // A numbered unit: a tab down the left edge in its number's colour, the number in it
+            // (the same colour as on its nameplate). At least 3% of the width, wider if the
+            // number needs it.
+            val density = resources.displayMetrics.density
+            val numberText = u.number.takeIf { it > 0 }?.toString()
+            var tabWidth = 0f
+            if (numberText != null) {
+                text.textSize = (height * 0.34f).coerceIn(dp(11).toFloat(), NUMBER_SIZE_DP * density)
+                text.typeface = NUMBER_FACE
+                tabWidth = maxOf(width * 0.03f, text.measureText(numberText) + dp(8))
+                fill.style = Paint.Style.FILL
+                fill.color = NUMBER_COLORS[u.numberColor]
+                canvas.save()
+                canvas.clipRect(0f, 0f, tabWidth, height.toFloat())
+                canvas.drawRoundRect(rect, r, r, fill)
+                canvas.restore()
+                text.color = Color.argb(255, 20, 18, 16)
+                text.textAlign = Paint.Align.CENTER
+                text.clearShadowLayer()
+                canvas.drawText(numberText, tabWidth / 2f, height / 2f - (text.descent() + text.ascent()) / 2, text)
+                text.setShadowLayer(3f, 0f, 1f, Color.BLACK)
+                text.textAlign = Paint.Align.LEFT
+                text.color = Color.WHITE
+                text.typeface = NAME_FACE
+            }
+            // Border: your target's in its tab's colour (yellow when it has no number), black for the rest.
             fill.style = Paint.Style.STROKE
             fill.strokeWidth = dp(if (u.isTarget) 5 else 2).toFloat()
-            fill.color = if (u.isTarget) Color.rgb(255, 209, 0) else Color.BLACK
+            fill.color = when {
+                !u.isTarget -> Color.BLACK
+                numberText != null -> NUMBER_COLORS[u.numberColor]
+                else -> Color.rgb(255, 209, 0)
+            }
             canvas.drawRoundRect(rect, r, r, fill)
             // Buffs/debuffs (Settings > Targeting): a row of icons along the bottom; the name and
             // health move up into the space above it, a little smaller.
@@ -593,7 +622,7 @@ class TargetFramesView(
             val textBottom = if (auras.isNotEmpty()) height - rows * (iconSize + gap) - dp(2) else height.toFloat()
             // About 15% under the old serif sizes: the sans-serif face reads larger.
             val textScale = if (auras.isNotEmpty()) 0.26f else 0.34f
-            if (auras.isNotEmpty()) drawAuras(canvas, auras, iconSize, cols, rows, gap)
+            if (auras.isNotEmpty()) drawAuras(canvas, auras, iconSize, cols, rows, gap, tabWidth)
             // Health right, name left in the space that's left: shrinks to fit, then "…".
             val hpText = when {
                 u.dead -> "Dead"
@@ -602,13 +631,8 @@ class TargetFramesView(
                 else -> ""
             }
             val pad = dp(12).toFloat()
-            // A numbered unit's name starts right after the "." of its number in the corner.
-            val numberText = u.numberText
-            val nameX = if (numberText != null) {
-                text.textSize = NUMBER_SIZE_DP * resources.displayMetrics.density
-                text.typeface = NUMBER_FACE
-                (NUMBER_X_DP * resources.displayMetrics.density + text.measureText(numberText)).also { text.typeface = NAME_FACE }
-            } else pad
+            // A numbered unit's name starts after its tab.
+            val nameX = if (tabWidth > 0) tabWidth + dp(8) else pad
             var size = (height * textScale).coerceAtMost(dp(18).toFloat())
             // Raid Heal mode: health at half the name's size (its boxes are small).
             val hpSize = if (chosen == Mode.RAID_HEAL) size * 0.5f else size
@@ -626,30 +650,20 @@ class TargetFramesView(
             val baseline = textBottom / 2f - (text.descent() + text.ascent()) / 2
             text.textAlign = Paint.Align.LEFT
             canvas.drawText(name, nameX, baseline, text)
-            // "2.": its number in the top-left corner, in its colour, as on the nameplate.
-            numberText?.let { number ->
-                text.textSize = NUMBER_SIZE_DP * resources.displayMetrics.density
-                text.color = NUMBER_COLORS[u.numberColor]
-                // Bold, so the number stands out from the name.
-                text.typeface = NUMBER_FACE
-                canvas.drawText(number, NUMBER_X_DP * resources.displayMetrics.density, dp(4) - text.ascent(), text)
-                text.typeface = NAME_FACE
-                text.color = Color.WHITE
-            }
             text.textSize = hpSize
             text.textAlign = Paint.Align.RIGHT
             canvas.drawText(hpText, width - pad, textBottom / 2f - (text.descent() + text.ascent()) / 2, text)
         }
 
         /** Icons left to right in [rows] rows of [cols] at the bottom, each with a coloured border and its time left. */
-        private fun drawAuras(canvas: Canvas, auras: List<LinkAura>, iconSize: Float, cols: Int, rows: Int, gap: Float) {
+        private fun drawAuras(canvas: Canvas, auras: List<LinkAura>, iconSize: Float, cols: Int, rows: Int, gap: Float, left: Float = 0f) {
             val now = System.currentTimeMillis()
             val gridTop = height - dp(3) - rows * iconSize - (rows - 1) * gap
             var counting = false
             for ((k, a) in auras.withIndex()) {
                 val row = k / cols
                 if (row >= rows) break
-                val x = dp(8) + (k % cols) * (iconSize + gap)
+                val x = left + dp(8) + (k % cols) * (iconSize + gap)
                 val top = gridTop + row * (iconSize + gap)
                 if (x + iconSize > width - dp(4)) continue
                 iconRect.set(x.toInt(), top.toInt(), (x + iconSize).toInt(), (top + iconSize).toInt())
@@ -777,11 +791,10 @@ class TargetFramesView(
     }
 }
 
-/** The corner number's size and its left edge (dp); the name starts where it ends. */
+/** The largest size of the number in a box's tab (dp). */
 private const val NUMBER_SIZE_DP = 14f
 private val NAME_FACE: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
 private val NUMBER_FACE: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-private const val NUMBER_X_DP = 6f
 
 /** The numbers' colours, the same list as NUMBER_COLORS in WoWMobileLink.lua (no green or red). */
 private val NUMBER_COLORS = intArrayOf(
