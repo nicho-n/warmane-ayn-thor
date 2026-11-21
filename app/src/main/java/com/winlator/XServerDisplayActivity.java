@@ -379,12 +379,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     @Override
     public void onBackPressed() {
-        if (environment != null) {
-            if (!drawerLayout.isDrawerOpen(GravityCompat.START)) {
-                drawerLayout.openDrawer(GravityCompat.START);
-            }
-            else drawerLayout.closeDrawers();
-        }
+        // wow-mobile: Back here is Android's edge-swipe gesture (the Thor's Back button goes to
+        // ConsolePortController as pointer mode), which opened the Winlator menu by accident.
+        // It only closes the menu now; a four-finger tap still opens it.
+        if (environment != null && drawerLayout.isDrawerOpen(GravityCompat.START)) drawerLayout.closeDrawers();
     }
 
     @Override
