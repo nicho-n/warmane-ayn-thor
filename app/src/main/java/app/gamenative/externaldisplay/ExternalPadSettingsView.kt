@@ -71,6 +71,8 @@ class ExternalPadSettingsView(
             addView(toggleRow(listOf("Nearby shows friendly NPCs" to PadSettings.NEARBY_FRIENDLY_NPC)))
             addView(toggleRow(listOf("Nearby shows friendly players" to PadSettings.NEARBY_FRIENDLY_PLAYER)))
             addView(toggleRow(listOf("Cursor back to screen centre after a target tap" to PadSettings.TARGET_CURSOR_CENTER)))
+            addView(toggleRow(listOf("Touch and drag for a trackpad" to PadSettings.TARGET_TRACKPAD)))
+            addView(note("Sliding a finger on the boxes turns them into a trackpad. Tap it to left-click. The bottom-left and bottom-right boxes become Left click and Right click buttons that work like the trackpad page's (hold one and slide another finger to drag; double-tap to keep it held). The X in the top-right box closes it. It goes back to the boxes 0.65 seconds after your last touch, and the cursor goes back to the middle of the screen."))
             addView(toggleRow(listOf("Show health as an amount" to PadSettings.HP_AMOUNT)))
             addView(note("Boxes show health like 12.3k instead of 85%."))
             addView(toggleRow(listOf("Show buffs/debuffs" to PadSettings.SHOW_AURAS)))

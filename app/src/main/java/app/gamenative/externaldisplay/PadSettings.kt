@@ -116,6 +116,8 @@ object PadSettings {
     const val NEARBY_FRIENDLY_PLAYER = "nearby_friendly_player"
     /** After a Target page tap clicks a nameplate, put the cursor back in the middle of the screen. */
     const val TARGET_CURSOR_CENTER = "target_cursor_center"
+    /** Touch and drag on the Target page's boxes turns it into a trackpad for a moment. */
+    const val TARGET_TRACKPAD = "target_trackpad"
     const val MUTED = "muted_borders"
     const val LABEL_SCALE = "label_scale"
     const val HAPTICS = "haptics"
@@ -204,6 +206,7 @@ object PadSettings {
         NEARBY_FRIENDLY_NPC to false,
         NEARBY_FRIENDLY_PLAYER to true,
         TARGET_CURSOR_CENTER to true,
+        TARGET_TRACKPAD to true,
         SWAP_SIDES to false,
         SWAP_TABS to false,
         PAGE_WIDTH to 100,
