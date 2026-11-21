@@ -17,6 +17,10 @@
 --  7. Default bindings: characters without ConsolePort bindings get the layout in
 --     DEFAULT_BINDINGS (Select targets a friend, L1 an enemy, Start interacts with
 --     the unit under the pointer; see README).
+-- 10. DoT timers on nameplates: NotPlater learns each debuff's duration as it goes, so a
+--     debuff it hasn't learned yet had no timer, and mobs dying early taught it shorter
+--     ones. Common DoTs now have a timer from the first cast (in any client language), and
+--     it keeps the longest.
 --
 -- /thor for status and options.
 
@@ -1765,3 +1769,55 @@ SlashCmdList.THORCONTROLS = function(input)
         msg("/thor defaults  - replace this character's controller bindings with the defaults (reloads)")
     end
 end
+
+-- 10. DoT timers on nameplates (NotPlater). On 3.3.5 a nameplate's debuffs come from the combat
+-- log, which says a debuff went on but not for how long. NotPlater learns each duration (from
+-- your target's debuffs, or by timing one until it ends) and shows no timer until then; it also
+-- learned from debuffs that ended early (the mob died), so its timers got shorter and ran out
+-- while the DoT was still ticking.
+--  - Known: these DoTs last the same at every rank and aren't changed by talents, so they get
+--    a timer from the first cast. Others still need to be seen once.
+--  - Longest: a debuff that ends early (death, dispel) never shortens a learned duration. A
+--    refresh restarts NotPlater's timing, so a real duration is never measured too long.
+-- By spell ID (rank 1), so the name comes from the game in its own language; every rank shares
+-- it. On an English client each name is checked against the one here, so a wrong ID is skipped.
+local KNOWN_DOTS = {
+    { 348, 15, "Immolate" }, { 30108, 15, "Unstable Affliction" }, { 48181, 12, "Haunt" },
+    { 27243, 18, "Seed of Corruption" }, { 603, 60, "Curse of Doom" }, { 589, 18, "Shadow Word: Pain" },
+    { 34914, 15, "Vampiric Touch" }, { 2944, 24, "Devouring Plague" }, { 1978, 15, "Serpent Sting" },
+    { 3674, 15, "Black Arrow" }, { 44457, 12, "Living Bomb" },
+}
+local knownDotNames
+local function knownDots()
+    if knownDotNames then return knownDotNames end
+    knownDotNames = {}
+    local english = (GetLocale() or ""):sub(1, 2) == "en"
+    for _, d in ipairs(KNOWN_DOTS) do
+        local name = GetSpellInfo(d[1])
+        if name and (not english or name == d[3]) then knownDotNames[name] = d[2] end
+    end
+    return knownDotNames
+end
+
+local function fixNotPlaterDurations()
+    local tracker = NotPlater and NotPlater.AuraTracker
+    if not tracker or tracker.thorDurations then return end
+    tracker.thorDurations = true
+    local getLearned, learn = tracker.GetLearnedDuration, tracker.LearnDuration
+    if not getLearned or not learn then return end
+    tracker.GetLearnedDuration = function(self, spellID, sourceType, targetType)
+        local duration, samples = getLearned(self, spellID, sourceType, targetType)
+        if duration then return duration, samples end
+        local known = spellID and knownDots()[GetSpellInfo(spellID) or ""]
+        if known then return known, 1 end
+    end
+    tracker.LearnDuration = function(self, spellID, sourceType, targetType, observed)
+        local previous = self:GetLearnedDuration(spellID, sourceType, targetType)
+        if previous and observed and observed < previous - 0.3 then return false end
+        return learn(self, spellID, sourceType, targetType, observed)
+    end
+end
+fixNotPlaterDurations()
+local durationFixer = CreateFrame("Frame")
+durationFixer:RegisterEvent("PLAYER_LOGIN")
+durationFixer:SetScript("OnEvent", fixNotPlaterDurations)

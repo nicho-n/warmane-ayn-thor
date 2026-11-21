@@ -11,6 +11,7 @@
 --   the first bit of the three being the most significant.
 --   Bits come MSB-first from this byte stream:
 --     'W' 'M' version seq mode slotCount recordCount
+--       slotCount 255: a state-only packet (F10 open key), never a real count
 --     records: slot class hp flags x y num nameLen name... hpAmount(3) auraCount auras...
 --       hpAmount: current health, 0-16777214 (16777215 unknown), high byte first
 --       auras (only while the app shows buffs/debuffs, see OPEN_KEYS; else auraCount 0), up
@@ -649,7 +650,17 @@ local function newGroup() return { plateSlot = {}, held = {}, lastRecord = {} } 
 local npcGroup, friendlyGroup, playerGroup = newGroup(), newGroup(), newGroup()
 
 -- Totems listed in Nearby (the rest are left out: there are many, and they rarely matter).
-local LISTED_TOTEMS = { ["Earthbind Totem"] = true }
+-- A totem's name is its spell's name, so Earthbind's comes from the game in its own language.
+-- The word "Totem" in the client's language tells the other totems apart.
+local LISTED_TOTEMS = {}
+local TOTEM_WORD = ({ esES = "Tótem", esMX = "Tótem", ruRU = "Тотем", koKR = "토템", zhCN = "图腾", zhTW = "圖騰" })[GetLocale() or ""] or "Totem"
+local function isUnlistedTotem(name)
+    if not next(LISTED_TOTEMS) then
+        local earthbind = GetSpellInfo(2484)
+        LISTED_TOTEMS[earthbind or "Earthbind Totem"] = true
+    end
+    return name:find(TOTEM_WORD, 1, true) and not LISTED_TOTEMS[name]
+end
 
 -- What the app's Nearby list includes besides enemies (set by the open key, see OPEN_KEYS).
 local showFriendlyNPCs, showFriendlyPlayers = false, true
@@ -663,7 +674,7 @@ local function nearby()
     for _, r in ipairs(found) do
         if bit.band(r.flags, 4) ~= 0 then targetShown = true end
         local isFriend, isPlayer = bit.band(r.flags, 32) ~= 0, bit.band(r.flags, 64) ~= 0
-        if not isPlayer and r.name:find("Totem") and not LISTED_TOTEMS[r.name] then
+        if not isPlayer and isUnlistedTotem(r.name) then
             -- Other totems: plates only (enemy totem plates are on for Earthbind).
         elseif isFriend and isPlayer then
             if showFriendlyPlayers then players[#players + 1] = r end
@@ -949,7 +960,9 @@ end
 -- looking through the nameplates.
 local function buildState()
     seq = (seq + 1) % 256
-    local b = { 87, 77, VERSION, seq, modeByte(lastMode), 0, 0 }
+    -- slotCount 255 marks it as state only: the app then knows to send its open key again
+    -- if a link page is showing (its key was lost, e.g. typed into an open chat box).
+    local b = { 87, 77, VERSION, seq, modeByte(lastMode), 255, 0 }
     local crc = crc16(b, #b)
     b[#b + 1] = math.floor(crc / 256)
     b[#b + 1] = crc % 256

@@ -662,12 +662,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         });
         // Target page: turn the WoWMobileLink addon's data row on/off and read it while shown.
         linkReader = new app.gamenative.externaldisplay.WowMobileLinkReader(xServer);
+        // State only until a link page shows. Before the listener: setting it passes on the
+        // current page at once (runOnUiThread runs it straight away here), and the pad opens
+        // on the Target page, so this must not come after it and switch the page back off.
+        setLinkActive(false);
         app.gamenative.externaldisplay.PadBridge.INSTANCE.setTargetPageListener(visible -> {
             runOnUiThread(() -> setLinkActive(visible));
             return kotlin.Unit.INSTANCE;
         });
-        // State only until a link page shows.
-        setLinkActive(false);
 
         // Login / character select: the controller works there (A = Enter), and auto-login
         // (WoW Settings) types the saved password once the login screen shows.
@@ -957,7 +959,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             long now = System.currentTimeMillis();
             long since = now - app.gamenative.externaldisplay.LinkState.INSTANCE.getLastPacketAt();
             com.winlator.xserver.XKeycode key = linkOpenKey();
-            if (key != linkOpenKeySent || (since > 3000 && now - linkChordAt >= 5000)) {
+            // Packets are coming, but not the kind this page asked for (the key was lost, e.g.
+            // typed into an open chat box): ask again, at most every 3 s.
+            int wanted = key == com.winlator.xserver.XKeycode.KEY_F10 ? app.gamenative.externaldisplay.LinkState.KIND_STATE
+                : key == com.winlator.xserver.XKeycode.KEY_INSERT ? app.gamenative.externaldisplay.LinkState.KIND_QUESTS
+                : app.gamenative.externaldisplay.LinkState.KIND_UNITS;
+            boolean wrongKind = since <= 3000 && app.gamenative.externaldisplay.LinkState.INSTANCE.getKind() != wanted
+                && now - app.gamenative.externaldisplay.LinkState.INSTANCE.getKindSince() > 1500 && now - linkChordAt >= 3000;
+            if (key != linkOpenKeySent || wrongKind || (since > 3000 && now - linkChordAt >= 5000)) {
+                android.util.Log.i("WowMobileLink", "open key " + key + (key != linkOpenKeySent ? " (changed)" : wrongKind ? " (wrong kind " + app.gamenative.externaldisplay.LinkState.INSTANCE.getKind() + ")" : " (no packets " + since + " ms)"));
                 sendLinkChord(key);
                 linkOpenKeySent = key;
                 linkChordAt = now;

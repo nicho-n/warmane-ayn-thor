@@ -68,6 +68,27 @@ object PadBridge {
     @Volatile
     var questPageShown = false
 
+    /** The pad that last said whether a link page is showing (the pad can be rebuilt). */
+    @Volatile
+    private var linkPageOwner: Any? = null
+
+    /** [owner]'s page changed: it is now the pad that counts. */
+    fun setTargetPageVisible(visible: Boolean, owner: Any) {
+        linkPageOwner = owner
+        setTargetPageVisible(visible)
+    }
+
+    /**
+     * [owner] is going away. Only clears the flag if it is still the pad that counts: when the pad
+     * is rebuilt, the new one has already said its page is showing, and the old one going away
+     * after it left the app asking for state only while the Target page was up.
+     */
+    fun padGone(owner: Any) {
+        if (linkPageOwner !== owner) return
+        linkPageOwner = null
+        setTargetPageVisible(false)
+    }
+
     fun setTargetPageVisible(visible: Boolean) {
         if (visible == targetPageShown) return
         targetPageShown = visible

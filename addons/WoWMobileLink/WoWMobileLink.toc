@@ -2,7 +2,7 @@
 ## Title: WoW Mobile Link
 ## Notes: Sends party, battleground and arena unit info to the WoW Mobile app's bottom-screen Target page. Only draws while that page is open (the app presses Ctrl+Alt+Shift+K, M, N or B / L).
 ## Author: nicholas
-## Version: 1.39
+## Version: 1.41
 ## SavedVariables: WoWMobileLinkDB
 
 WoWMobileLink.lua

@@ -50,6 +50,7 @@ class ExternalActionBarView(
     private class Down(val combo: KeyCombo, val isolated: Boolean, val pressed: List<XKeycode> = combo.mods)
 
     private val downKeys = mutableMapOf<XKeycode, Down>()
+    private val liftHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var isolatedDown = 0
     private var suspendedModifiers: List<XKeycode> = emptyList()
     private lateinit var rightColumn: LinearLayout
@@ -181,35 +182,50 @@ class ExternalActionBarView(
             (pageHost.layoutParams as LayoutParams).weight = pageWeight()
             pageHost.requestLayout()
             PadBridge.questPageShown = false
-            PadBridge.setTargetPageVisible(true)
+            PadBridge.setTargetPageVisible(true, this)
             return
         }
         // wow-mobile: the Quests page is the quest log, also from the link (see QuestLogView).
         if (page.id == "quests") {
-            pageHost.addView(QuestLogView(context, theme) { command -> SlashTyper.type(xServer, command, onSuspendModifiers, onResumeModifiers) }.apply {
+            val questPad = PadTrackpad(context, xServer, theme)
+            pageHost.addView(TrackpadArea(context, questPad).apply {
                 layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) }
+                addView(QuestLogView(context, theme) { command -> SlashTyper.type(xServer, command, onSuspendModifiers, onResumeModifiers) })
+                addView(questPad)
             })
             if (this::rightColumn.isInitialized) rightColumn.visibility = GONE
             (pageHost.layoutParams as LayoutParams).weight = pageWeight()
             pageHost.requestLayout()
             PadBridge.questPageShown = true
-            PadBridge.setTargetPageVisible(true)
+            PadBridge.setTargetPageVisible(true, this)
             return
         }
         if (this::rightColumn.isInitialized) rightColumn.visibility = VISIBLE
         PadBridge.questPageShown = false
-        PadBridge.setTargetPageVisible(false)
+        PadBridge.setTargetPageVisible(false, this)
         val slots = orderedSlots(page.id, page.slots).filter { !PadSettings.isHidden(it.label) }
         val columns = if (slots.size > SINGLE_COLUMN_MAX) slots.chunked((slots.size + 1) / 2) else listOf(slots)
         val split = columns.size > 1
-        columns.forEach { column ->
-            pageHost.addView(
-                group(vertical = true, strong = false).apply {
-                    layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) }
-                    column.forEach { addView(keyRow(listOf(it), textSp = if (split) 13f else 15f, weight = 1f, muted = true, wrap = split)) }
-                },
-            )
+        val lift = PadSettings.bool(PadSettings.TARGET_TRACKPAD)
+        val groups = columns.map { column ->
+            group(vertical = true, strong = false).apply {
+                layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) }
+                column.forEach { addView(keyRow(listOf(it), textSp = if (split) 13f else 15f, weight = 1f, muted = true, wrap = split, onLift = lift)) }
+            }
         }
+        // wow-mobile: touch and drag turns the page into a trackpad (Settings > Targeting).
+        val pagePad = PadTrackpad(context, xServer, theme).also { pad ->
+            pad.columns = { groups.map { g -> (0 until g.childCount).mapNotNull { (g.getChildAt(it) as? android.view.ViewGroup)?.getChildAt(0) } } }
+        }
+        pageHost.addView(TrackpadArea(context, pagePad).apply {
+            layoutParams = LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
+            addView(LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                isMotionEventSplittingEnabled = true
+                groups.forEach { addView(it) }
+            })
+            addView(pagePad)
+        })
         (pageHost.layoutParams as LayoutParams).weight = pageWeight()
         pageHost.requestLayout()
     }
@@ -259,6 +275,7 @@ class ExternalActionBarView(
         numbers: Boolean = false,
         wrap: Boolean = false,
         canHide: Boolean = true,
+        onLift: Boolean = false,
     ): LinearLayout {
         return LinearLayout(context).apply {
             orientation = HORIZONTAL
@@ -266,7 +283,7 @@ class ExternalActionBarView(
             // Rows share the column's height by weight, so everything always fits.
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, weight)
             slots.forEach { slot ->
-                val button = createButton(slot, textSp, muted, numbers, wrap)
+                val button = createButton(slot, textSp, muted, numbers, wrap, onLift)
                 if (canHide && PadSettings.isHidden(slot.label)) {
                     button.visibility = INVISIBLE
                     button.isEnabled = false
@@ -278,7 +295,7 @@ class ExternalActionBarView(
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun createButton(slot: Slot, textSp: Float, muted: Boolean, numbers: Boolean, wrap: Boolean = false): View {
+    private fun createButton(slot: Slot, textSp: Float, muted: Boolean, numbers: Boolean, wrap: Boolean = false, onLift: Boolean = false): View {
         return GlowTextView(context).apply {
             text = if (wrap) wrapLabel(PadSettings.displayName(slot.label)) else PadSettings.displayName(slot.label)
             contentDescription = slot.label
@@ -313,6 +330,25 @@ class ExternalActionBarView(
                     when (event.actionMasked) {
                         MotionEvent.ACTION_DOWN -> { view.isPressed = true; PadSettings.haptic(view) }
                         MotionEvent.ACTION_UP -> { view.isPressed = false; SlashTyper.type(xServer, slot.command, onSuspendModifiers, onResumeModifiers) }
+                        MotionEvent.ACTION_CANCEL -> view.isPressed = false
+                    }
+                    return@setOnTouchListener true
+                }
+                // wow-mobile: on a page that can turn into a trackpad the button goes on lift (a tap),
+                // so a finger that slides off into the trackpad presses nothing.
+                if (onLift) {
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> { view.isPressed = true; PadSettings.haptic(view) }
+                        MotionEvent.ACTION_UP -> {
+                            view.isPressed = false
+                            if (event.x >= 0 && event.y >= 0 && event.x <= view.width && event.y <= view.height) {
+                                val combo = comboFor(slot)
+                                pressKey(combo, isolated = slot.isolated, mergeModifiers = mergesModifiers(slot))
+                                // On the main handler, so the release comes even if the page changes meanwhile.
+                                liftHandler.postDelayed({ releaseKey(combo.key) }, LIFT_TAP_MS)
+                                if (slot.label == "Chat" || slot.label == "Slash" || slot.label == "Reply") onChatTyping()
+                            }
+                        }
                         MotionEvent.ACTION_CANCEL -> view.isPressed = false
                     }
                     return@setOnTouchListener true
@@ -401,7 +437,7 @@ class ExternalActionBarView(
 
     /** Never leave a key stuck down if the display goes away or the game closes mid-press. */
     override fun onDetachedFromWindow() {
-        PadBridge.setTargetPageVisible(false)
+        PadBridge.padGone(this)
         releaseAllKeys()
         super.onDetachedFromWindow()
     }
@@ -412,6 +448,8 @@ class ExternalActionBarView(
     }
 
     companion object {
+        /** A page button that fires on lift holds its key this long. */
+        private const val LIFT_TAP_MS = 40L
         const val GROUP_NUMBERS = "numbers"
         const val GROUP_EXTRAS = "extras"
 

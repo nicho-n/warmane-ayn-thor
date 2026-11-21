@@ -91,6 +91,20 @@ object LinkState {
 
     /** A spell waits to be placed on the ground (from a packet in the last second). */
     fun placingSpell() = spellTargeting && System.currentTimeMillis() - lastPacketAt < 1000
+    /** What the addon is sending: state only (F10 open key), units (Target page) or the quest log. */
+    const val KIND_STATE = 0
+    const val KIND_UNITS = 1
+    const val KIND_QUESTS = 2
+    @Volatile var kind = KIND_STATE
+        private set
+    /** Since when packets of [kind] have been coming in. */
+    @Volatile var kindSince = 0L
+        private set
+
+    private fun setKind(k: Int) {
+        if (k != kind) { kind = k; kindSince = System.currentTimeMillis(); android.util.Log.i("WowMobileLink", "packets now kind $k") }
+    }
+
     /** Packets received so far (to wait for ones drawn after a cursor move). */
     @Volatile var packets = 0L
         private set
@@ -104,9 +118,12 @@ object LinkState {
     fun unit(slot: Int): LinkUnit? = units[slot]?.takeIf { System.currentTimeMillis() - it.seenAt < staleMs }
 
     /** A quest log packet came in: the link is up, though there are no units in it. */
-    internal fun touch() { lastPacketAt = System.currentTimeMillis(); packets++ }
+    internal fun touch() { lastPacketAt = System.currentTimeMillis(); packets++; setKind(KIND_QUESTS) }
 
-    internal fun apply(rawMode: Int, records: List<LinkUnit>, total: Int = records.size) {
+    internal fun apply(rawMode: Int, records: List<LinkUnit>, rawTotal: Int = records.size) {
+        // slotCount 255: a state-only packet (WoWMobileLink 1.40+); older ones send 0 there.
+        setKind(if (rawTotal == 255) KIND_STATE else KIND_UNITS)
+        val total = if (rawTotal == 255) 0 else rawTotal
         // How long a full round takes: packets per round, twice over for a missed packet or two.
         if (records.isNotEmpty()) perPacket = perPacket * 0.8f + records.size * 0.2f
         val rounds = kotlin.math.ceil(total / perPacket.coerceAtLeast(1f)).toLong()
