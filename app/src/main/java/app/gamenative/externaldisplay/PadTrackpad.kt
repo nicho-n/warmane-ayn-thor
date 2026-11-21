@@ -366,7 +366,7 @@ class PadTrackpad(context: Context, private val xServer: XServer, private val th
 
     companion object {
         /** How far a finger slides on a page before it turns into a trackpad (dp). */
-        const val START_DP = 56
+        const val START_DP = 50
         /** How far a finger slides on the trackpad before a touch is no longer a tap (dp). */
         private const val DRAG_START_DP = 14
         /** The trackpad goes back to the page after this long without a touch. */
