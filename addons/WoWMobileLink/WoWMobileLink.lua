@@ -30,7 +30,9 @@
 --     CRC-16/CCITT (init 0xFFFF, poly 0x1021) over everything before it, high byte first.
 --   mode: 0 world, 1 dungeon, 2 raid, 3 battleground, 4 arena; +128 when the cursor is
 --         over a UI frame rather than the game world (the app then targets by key
---         instead of clicking a nameplate that's under, say, the quest tracker)
+--         instead of clicking a nameplate that's under, say, the quest tracker); +64 while a
+--         spell waits to be placed; +32 when the minimap shows and no menu or map covers the
+--         screen (the app shows the battery level only then)
 --   slots: 0 player, 1-4 party1-4, 10-19 battleground team, 20-29 battleground
 --          enemies, 30-34 arena1-5, 40-49 nearby enemies (from on-screen nameplates: hostile
 --          and neutral NPCs and enemy players), 50-59 nearby friendly NPCs, 60-69 nearby
@@ -972,10 +974,22 @@ end
 -- ground (the app's right stick then moves the cursor), plus 128 while the cursor is over a
 -- UI frame.
 local lastMode = 0
+-- Frames that cover the game: while one is open the minimap counts as hidden.
+local COVERING = { "WorldMapFrame", "GameMenuFrame", "InterfaceOptionsFrame", "VideoOptionsFrame",
+    "AudioOptionsFrame", "KeyBindingFrame", "HelpFrame", "MacOptionsFrame" }
+local function minimapView()
+    if not (Minimap and Minimap:IsVisible()) then return false end
+    for _, name in ipairs(COVERING) do
+        local f = _G[name]
+        if f and f:IsShown() then return false end
+    end
+    return true
+end
+
 local function modeByte(mode)
     local focus = GetMouseFocus()
     local overUi = focus and focus ~= WorldFrame and focus:GetParent() ~= WorldFrame
-    return mode + (SpellIsTargeting() and 64 or 0) + (overUi and 128 or 0)
+    return mode + (minimapView() and 32 or 0) + (SpellIsTargeting() and 64 or 0) + (overUi and 128 or 0)
 end
 
 -- State only (F10 open key: no link page is showing): the header and no units, without

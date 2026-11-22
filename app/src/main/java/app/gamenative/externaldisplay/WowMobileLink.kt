@@ -91,6 +91,9 @@ object LinkState {
     /** Whether a spell was waiting to be placed on the ground in the last packet. */
     @Volatile var spellTargeting = false
         private set
+    /** Whether the minimap showed with no menu or map over the game, in the last packet. */
+    @Volatile var minimapView = false
+        private set
 
     /** A spell waits to be placed on the ground (from a packet in the last second). */
     fun placingSpell() = spellTargeting && System.currentTimeMillis() - lastPacketAt < 1000
@@ -138,7 +141,8 @@ object LinkState {
         if (records.isNotEmpty()) perPacket = perPacket * 0.8f + records.size * 0.2f
         val rounds = kotlin.math.ceil(total / perPacket.coerceAtLeast(1f)).toLong()
         staleMs = (rounds * PACKET_MS * 2 + 500).coerceIn(MIN_STALE_MS, MAX_STALE_MS)
-        val newMode = rawMode and 63
+        val newMode = rawMode and 31
+        minimapView = rawMode and 32 != 0
         cursorOverUi = rawMode and 128 != 0
         spellTargeting = rawMode and 64 != 0
         packets++

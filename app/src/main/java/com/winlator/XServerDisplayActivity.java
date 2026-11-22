@@ -1360,8 +1360,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
      * wow-mobile: the Thor's battery level in the game's top-right corner (next to the minimap's
      * zone name), small, in WoW's light gold with a shadow (red when low). Touches pass through.
      * Off in WoW Settings > Interface.
-     * Only in the world: hidden on the login and character screens and while loading (the
-     * WowMobileLink addon sends packets only in the world, several a second).
+     * Only with the minimap: hidden on the login and character screens, while loading, and while
+     * a menu or the world map is open or the UI is hidden (the WowMobileLink addon reports it,
+     * several times a second, only in the world).
      */
     private void addBatteryBadge(FrameLayout rootView) {
         final TextView badge = new TextView(this);
@@ -1383,7 +1384,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 if (isFinishing() || isDestroyed()) return;
                 boolean atGlue = glueScreens != null && glueScreens.getCurrent() != app.gamenative.externaldisplay.GlueScreenWatcher.Screen.NONE;
                 long since = System.currentTimeMillis() - app.gamenative.externaldisplay.LinkState.INSTANCE.getLastPacketAt();
-                badge.setVisibility(!atGlue && since < 3000 ? View.VISIBLE : View.GONE);
+                boolean minimap = app.gamenative.externaldisplay.LinkState.INSTANCE.getMinimapView();
+                badge.setVisibility(!atGlue && since < 3000 && minimap ? View.VISIBLE : View.GONE);
                 badge.postDelayed(this, 1000);
             }
         });
