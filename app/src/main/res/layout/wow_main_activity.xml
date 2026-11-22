@@ -9,21 +9,25 @@
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:orientation="vertical"
             android:gravity="center_horizontal"
-            android:padding="24dp">
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingTop="24dp"
+            android:paddingBottom="0dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:id="@+id/TVWowTitle"
-                android:text="@string/app_name"
+                android:text="@string/wow_title"
                 android:textSize="34sp"
                 android:textStyle="bold"
                 android:textColor="?attr/colorPrimaryText"/>
@@ -37,52 +41,66 @@
                 android:textSize="14sp"
                 android:textColor="?attr/colorSecondaryText"/>
 
+            <!-- What the app is pointed at, in a small card. -->
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
+                android:layout_marginTop="14dp"
                 android:orientation="vertical"
-                android:padding="16dp"
+                android:gravity="center_horizontal"
+                android:paddingStart="32dp"
+                android:paddingEnd="32dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp"
                 android:id="@+id/LLWowStatusPanel"
                 android:background="?attr/colorSecondarySurface">
 
                 <TextView
                     android:id="@+id/TVWowFolder"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textSize="13sp"
                     android:textColor="?attr/colorSecondaryText"/>
 
                 <TextView
                     android:id="@+id/TVWowStatus"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center"
                     android:textSize="15sp"
                     android:textColor="?attr/colorPrimaryText"/>
 
                 <TextView
                     android:id="@+id/TVWowRealmlist"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="6dp"
                     android:textSize="13sp"
                     android:textColor="?attr/colorSecondaryText"/>
             </LinearLayout>
 
-            <!-- Play, with Update on its right when a newer version is out. -->
+            <!-- Pushes the buttons and links to the bottom of the screen. -->
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"/>
+
+            <!-- Play (a little wider than the word); Update on its right when a newer version is
+                 out. The row is centred, so Play alone is centred and Play + Update together are. -->
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
                 android:orientation="horizontal">
 
                 <Button
                     android:id="@+id/BTPlay"
                     android:foreground="@drawable/focus_border"
-                    android:layout_width="0dp"
-                    android:layout_height="72dp"
-                    android:layout_weight="2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="65dp"
+                    android:minWidth="0dp"
+                    android:paddingStart="56dp"
+                    android:paddingEnd="56dp"
                     android:text="@string/wow_play"
                     android:textSize="22sp"
                     android:textStyle="bold"
@@ -91,72 +109,106 @@
                 <Button
                     android:id="@+id/BTUpdate"
                     android:foreground="@drawable/focus_border"
-                    android:layout_width="0dp"
-                    android:layout_height="72dp"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="65dp"
+                    android:paddingStart="32dp"
+                    android:paddingEnd="32dp"
+                    android:layout_marginStart="12dp"
                     android:textSize="17sp"
                     android:visibility="gone"/>
             </LinearLayout>
 
+            <!-- Change Game Folder and Donate, the same width. -->
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="25dp"
                 android:orientation="horizontal">
 
                 <Button
                     android:id="@+id/BTSelectFolder"
                     android:foreground="@drawable/focus_border"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginEnd="8dp"
+                    android:layout_width="220dp"
+                    android:layout_height="48dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:maxLines="1"
                     android:text="@string/wow_select_game_folder"/>
 
                 <Button
                     android:id="@+id/BTDonate"
                     android:foreground="@drawable/focus_border"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
+                    android:layout_width="220dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="16dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:maxLines="1"
                     android:text="@string/wow_donate"/>
             </LinearLayout>
 
+            <!-- WoW Settings exactly in the middle (under Play): the links on either side each
+                 get half of the rest of the row. -->
             <LinearLayout
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="6dp"
                 android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="end">
 
                 <Button
                     android:id="@+id/BTAdvanced"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="8dp"
                     android:foreground="@drawable/focus_border"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     style="?android:attr/borderlessButtonStyle"
                     android:textColor="?attr/colorSecondaryText"
                     android:text="@string/wow_advanced"/>
+                </LinearLayout>
 
                 <Button
                     android:id="@+id/BTWowSettings"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="8dp"
                     android:foreground="@drawable/focus_border"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="16dp"
+                    android:layout_marginStart="24dp"
+                    android:layout_marginEnd="24dp"
                     style="?android:attr/borderlessButtonStyle"
                     android:textColor="?attr/colorSecondaryText"
                     android:text="@string/wow_settings"/>
 
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="start">
+
                 <Button
                     android:id="@+id/BTContainerSettings"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="8dp"
                     android:foreground="@drawable/focus_border"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="16dp"
                     style="?android:attr/borderlessButtonStyle"
                     android:textColor="?attr/colorSecondaryText"
                     android:text="@string/wow_container_settings"/>
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
     </ScrollView>

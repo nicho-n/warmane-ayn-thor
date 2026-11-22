@@ -225,11 +225,45 @@ public class WowMobileActivity extends AppCompatActivity {
         return true;
     }
 
-    /** Same look as the bottom-screen pad: dark stone buttons, gold trim, cream serif text. */
+    /** The main screen's backdrop: a picture scaled to cover the screen (cropped, not stretched),
+     *  darkened by [scrim] so the text and buttons stay readable. */
+    private static final class BackdropDrawable extends android.graphics.drawable.Drawable {
+        private final android.graphics.Bitmap bitmap;
+        private final int scrim;
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+        private final android.graphics.Rect src = new android.graphics.Rect();
+
+        BackdropDrawable(android.graphics.Bitmap bitmap, int scrim) {
+            this.bitmap = bitmap;
+            this.scrim = scrim;
+        }
+
+        @Override
+        public void draw(android.graphics.Canvas canvas) {
+            android.graphics.Rect b = getBounds();
+            canvas.drawColor(scrim | 0xFF000000);
+            if (bitmap != null && b.width() > 0 && b.height() > 0) {
+                float scale = Math.max(b.width() / (float)bitmap.getWidth(), b.height() / (float)bitmap.getHeight());
+                int w = Math.round(b.width() / scale), h = Math.round(b.height() / scale);
+                int x = (bitmap.getWidth() - w) / 2, y = (bitmap.getHeight() - h) / 2;
+                src.set(x, y, x + w, y + h);
+                canvas.drawBitmap(bitmap, src, b, paint);
+            }
+            canvas.drawColor(scrim);
+        }
+
+        @Override public void setAlpha(int alpha) {}
+        @Override public void setColorFilter(android.graphics.ColorFilter filter) {}
+        @Override public int getOpacity() { return android.graphics.PixelFormat.OPAQUE; }
+    }
+
+    /** The pad's button style in Dalaran colours (see PadTheme.LAUNCHER): pale gold on stone. */
     private void applyPadStyle() {
-        app.gamenative.externaldisplay.PadTheme theme = app.gamenative.externaldisplay.PadTheme.Companion.getDEFAULT();
+        app.gamenative.externaldisplay.PadTheme theme = app.gamenative.externaldisplay.PadTheme.LAUNCHER;
         float density = getResources().getDisplayMetrics().density;
-        findViewById(R.id.LLWowRoot).setBackgroundColor(theme.getBackground());
+        findViewById(R.id.LLWowRoot).setBackground(new BackdropDrawable(
+                android.graphics.BitmapFactory.decodeResource(getResources(), R.drawable.launcher_dalaran),
+                (theme.getBackground() & 0x00FFFFFF) | 0x99000000));
         findViewById(R.id.LLWowStatusPanel).setBackground(theme.groupBackground(density, false));
         for (int id : new int[]{R.id.TVWowTitle, R.id.TVWowStatus}) {
             TextView tv = findViewById(id);
@@ -243,8 +277,8 @@ public class WowMobileActivity extends AppCompatActivity {
         for (int id : new int[]{R.id.BTPlay, R.id.BTSelectFolder, R.id.BTDonate}) {
             Button b = findViewById(id);
             android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
-            // Change Game Folder and Donate: dark grey trim, so Play stands out.
-            Integer trim = id == R.id.BTPlay ? null : Integer.valueOf(0xFF4A4744);
+            // Change Game Folder and Donate: dim bronze trim, so Play stands out.
+            Integer trim = id == R.id.BTPlay ? null : Integer.valueOf(0xFF6E6250);
             states.addState(new int[]{android.R.attr.state_pressed}, theme.buttonBackground(density, 10f, true, false, false, false, false, trim, 1f));
             states.addState(new int[]{}, theme.buttonBackground(density, 10f, false, false, false, id == R.id.BTPlay, false, trim, 1f));
             b.setBackgroundTintList(null);

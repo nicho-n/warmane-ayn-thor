@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Warmane Ayn Thor Launcher</string>
+    <string name="wow_title" translatable="false">Warmane DS</string>
     <string name="wow_subtitle">World of Warcraft 3.3.5a on Android</string>
     <string name="wow_play">PLAY</string>
     <string name="wow_settings">WoW Settings</string>

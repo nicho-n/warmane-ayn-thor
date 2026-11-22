@@ -117,6 +117,23 @@ data class PadTheme(
         }
 
     companion object {
+        /** The launcher's main screen, over the Dalaran backdrop: the pad's gold, paler, on slightly see-through stone. */
+        @JvmField
+        val LAUNCHER = PadTheme(
+            background = 0xFF0A0807.toInt(),
+            keyTop = 0xC6362C24.toInt(),
+            keyBottom = 0xC61E1813.toInt(),
+            pressedTop = 0xFF8E6A38.toInt(),
+            pressedBottom = 0xFF5C4222.toInt(),
+            border = 0xFFD2B57A.toInt(),
+            borderInner = 0xFF7A6440.toInt(),
+            borderBright = 0xFFF0D9A0.toInt(),
+            text = 0xFFECDEBA.toInt(),
+            textPressed = 0xFFFFF0CC.toInt(),
+            raisedTop = 0xCF4A3D30.toInt(),
+            raisedBottom = 0xCF2C231A.toInt(),
+        )
+
         val DEFAULT = PadTheme(
             background = 0xFF0A0807.toInt(),
             keyTop = 0xFF28201A.toInt(),
