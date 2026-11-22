@@ -19,13 +19,13 @@
             android:gravity="center_horizontal"
             android:paddingStart="24dp"
             android:paddingEnd="24dp"
-            android:paddingTop="24dp"
+            android:paddingTop="20dp"
             android:paddingBottom="0dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="0dp"
                 android:id="@+id/TVWowTitle"
                 android:text="@string/wow_title"
                 android:textSize="34sp"
@@ -115,7 +115,11 @@
                     android:paddingEnd="32dp"
                     android:layout_marginStart="12dp"
                     android:textSize="17sp"
-                    android:visibility="gone"/>
+                    android:visibility="gone"
+                    android:nextFocusRight="@id/BTUpdate"
+                    android:nextFocusUp="@id/BTUpdate"
+                    android:nextFocusDown="@id/BTDonate"
+                    android:nextFocusLeft="@id/BTPlay"/>
             </LinearLayout>
 
             <!-- Change Game Folder and Donate, the same width. -->

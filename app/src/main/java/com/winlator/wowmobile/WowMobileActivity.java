@@ -83,8 +83,8 @@ public class WowMobileActivity extends AppCompatActivity {
         });
 
         btUpdate.setAllCaps(false);
-        // Touch only: the controller's A must keep starting the game.
-        btUpdate.setFocusable(false);
+        // D-pad right from Play reaches it and A presses it; Play keeps the focus when the
+        // screen opens, so A on its own still starts the game.
         btUpdate.setOnClickListener((v) -> onUpdate());
         checkForUpdate();
 
