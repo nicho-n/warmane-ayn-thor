@@ -19,7 +19,7 @@
             android:gravity="center_horizontal"
             android:paddingStart="24dp"
             android:paddingEnd="24dp"
-            android:paddingTop="20dp"
+            android:paddingTop="24dp"
             android:paddingBottom="0dp">
 
             <TextView
@@ -35,7 +35,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="8dp"
                 android:id="@+id/TVWowSubtitle"
                 android:text="@string/wow_subtitle"
                 android:textSize="14sp"
@@ -45,13 +45,13 @@
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
+                android:layout_marginTop="16dp"
                 android:orientation="vertical"
                 android:gravity="center_horizontal"
                 android:paddingStart="32dp"
                 android:paddingEnd="32dp"
-                android:paddingTop="14dp"
-                android:paddingBottom="14dp"
+                android:paddingTop="16dp"
+                android:paddingBottom="16dp"
                 android:id="@+id/LLWowStatusPanel"
                 android:background="?attr/colorSecondarySurface">
 
@@ -66,7 +66,7 @@
                     android:id="@+id/TVWowStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginTop="8dp"
                     android:gravity="center"
                     android:textSize="15sp"
                     android:textColor="?attr/colorPrimaryText"/>
@@ -75,7 +75,7 @@
                     android:id="@+id/TVWowRealmlist"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginTop="8dp"
                     android:textSize="13sp"
                     android:textColor="?attr/colorSecondaryText"/>
             </LinearLayout>
@@ -96,13 +96,13 @@
                 <Button
                     android:id="@+id/BTPlay"
                     android:foreground="@drawable/focus_border"
-                    android:layout_width="wrap_content"
-                    android:layout_height="65dp"
+                    android:layout_width="232dp"
+                    android:layout_height="56dp"
                     android:minWidth="0dp"
-                    android:paddingStart="56dp"
-                    android:paddingEnd="56dp"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
                     android:text="@string/wow_play"
-                    android:textSize="22sp"
+                    android:textSize="20sp"
                     android:textStyle="bold"
                     android:backgroundTint="?attr/colorAccent"/>
 
@@ -110,11 +110,11 @@
                     android:id="@+id/BTUpdate"
                     android:foreground="@drawable/focus_border"
                     android:layout_width="wrap_content"
-                    android:layout_height="65dp"
-                    android:paddingStart="32dp"
-                    android:paddingEnd="32dp"
+                    android:layout_height="56dp"
+                    android:paddingStart="24dp"
+                    android:paddingEnd="24dp"
                     android:layout_marginStart="12dp"
-                    android:textSize="17sp"
+                    android:textSize="16sp"
                     android:visibility="gone"
                     android:nextFocusRight="@id/BTUpdate"
                     android:nextFocusUp="@id/BTUpdate"
@@ -122,17 +122,17 @@
                     android:nextFocusLeft="@id/BTPlay"/>
             </LinearLayout>
 
-            <!-- Change Game Folder and Donate, the same width. -->
+            <!-- Change Game Folder and Donate, as wide as Play. Spacing is on an 8dp grid. -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="25dp"
+                android:layout_marginTop="40dp"
                 android:orientation="horizontal">
 
                 <Button
                     android:id="@+id/BTSelectFolder"
                     android:foreground="@drawable/focus_border"
-                    android:layout_width="220dp"
+                    android:layout_width="232dp"
                     android:layout_height="48dp"
                     android:paddingStart="8dp"
                     android:paddingEnd="8dp"
@@ -142,7 +142,7 @@
                 <Button
                     android:id="@+id/BTDonate"
                     android:foreground="@drawable/focus_border"
-                    android:layout_width="220dp"
+                    android:layout_width="232dp"
                     android:layout_height="48dp"
                     android:layout_marginStart="16dp"
                     android:paddingStart="8dp"
@@ -156,7 +156,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="16dp"
                 android:orientation="horizontal">
 
                 <LinearLayout
