@@ -1,4 +1,4 @@
-# Warmane on AYN Thor
+# Warmane DS
 
 <p align="center">
   <a href="https://buymeacoffee.com/nichon"><img src="images/buymeacoffee-qr.png" width="200" alt="Buy Me a Coffee QR code (buymeacoffee.com/nichon)"></a>
@@ -8,7 +8,7 @@
 
 ---
 
-An Android launcher for playing [Warmane](https://www.warmane.com) (World of Warcraft
+Warmane DS is an Android launcher for playing [Warmane](https://www.warmane.com) (World of Warcraft
 3.3.5a) on the AYN Thor.
 
 This is a fork of [WoW Mobile](https://github.com/marcocastignoli/wow-mobile), and uses the
@@ -17,7 +17,7 @@ touch screen controls of the [AYN Thor WoW Launcher](https://github.com/wyattabu
 **[Download here](https://github.com/nicho-n/warmane-ayn-thor/releases/latest/download/warmane-ayn-thor.apk)**
 
 <p align="center">
-  <img src="images/ayn-thor.jpg" width="500" alt="Warmane on the AYN Thor: the game on the top screen, the touch targeting page on the bottom screen">
+  <img src="images/ayn-thor.jpg" width="500" alt="Warmane DS on the AYN Thor: the game on the top screen, the touch targeting page on the bottom screen">
 </p>
 
 ## Features
