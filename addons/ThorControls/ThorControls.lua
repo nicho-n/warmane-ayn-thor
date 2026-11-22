@@ -79,7 +79,7 @@ local DEFAULT_BINDINGS = {
     CP_R_UP    = { [""] = "ACTIONBUTTON2", ["SHIFT-"] = "ACTIONBUTTON7", ["CTRL-"] = "MULTIACTIONBAR1BUTTON2", ["CTRL-SHIFT-"] = "MULTIACTIONBAR1BUTTON7" },  -- Y
     CP_R_RIGHT = { [""] = "ACTIONBUTTON3", ["SHIFT-"] = "ACTIONBUTTON8", ["CTRL-"] = "MULTIACTIONBAR1BUTTON3", ["CTRL-SHIFT-"] = "OPENALLBAGS" },             -- B
     CP_R_DOWN  = { [""] = "ACTIONBUTTON5", ["SHIFT-"] = "ACTIONBUTTON9", ["CTRL-"] = "MULTIACTIONBAR4BUTTON5", ["CTRL-SHIFT-"] = "CLICK ConsolePortUtilityToggle:LeftButton" }, -- A
-    CP_T1      = { [""] = "TARGETNEARESTENEMY", ["SHIFT-"] = "MULTIACTIONBAR1BUTTON4", ["CTRL-"] = "MINIMAPZOOMIN", ["CTRL-SHIFT-"] = "MULTIACTIONBAR1BUTTON9" },  -- L1
+    CP_T1      = { [""] = "TARGETNEARESTENEMY", ["SHIFT-"] = "MULTIACTIONBAR1BUTTON4", ["CTRL-"] = "MULTIACTIONBAR1BUTTON8", ["CTRL-SHIFT-"] = "MULTIACTIONBAR1BUTTON9" },  -- L1
     CP_T2      = { [""] = "JUMP", ["SHIFT-"] = "ACTIONBUTTON10", ["CTRL-"] = "MULTIACTIONBAR1BUTTON5", ["CTRL-SHIFT-"] = "MULTIACTIONBAR1BUTTON10" },         -- R1
     CP_L_UP    = { [""] = "MULTIACTIONBAR1BUTTON12", ["SHIFT-"] = "CAMERAZOOMIN", ["CTRL-"] = "MULTIACTIONBAR2BUTTON6", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON10" },
     CP_L_DOWN  = { [""] = "ACTIONBUTTON11", ["SHIFT-"] = "CAMERAZOOMOUT", ["CTRL-"] = "MULTIACTIONBAR2BUTTON8", ["CTRL-SHIFT-"] = "MULTIACTIONBAR2BUTTON12" },
@@ -141,6 +141,13 @@ local function undoEatDrinkBinding()
     local set = type(ConsolePortBindingSet) == "table" and ConsolePortBindingSet[classSetId()]
     local mods = type(set) == "table" and set.CP_L_RIGHT
     if type(mods) == "table" and mods[""] == "CLICK ThorEatDrink:LeftButton" then mods[""] = "ACTIONBUTTON12" end
+end
+
+-- Once per character: L1 + R2 used to zoom the minimap in; it's an action bar button now.
+local function migrateMinimapZoom()
+    local set = type(ConsolePortBindingSet) == "table" and ConsolePortBindingSet[classSetId()]
+    local mods = type(set) == "table" and set.CP_T1
+    if type(mods) == "table" and mods["CTRL-"] == "MINIMAPZOOMIN" then mods["CTRL-"] = "MULTIACTIONBAR1BUTTON8" end
 end
 
 local defaults = { petbar = true, xpShow = true, xpText = false, xpWidth = 100, xpHeight = 11, xpX = 0, xpY = 0, hideTriggers = true, hideTrail = true, defaultCastBar = true, hideGcd = false, petRingLeft = true, petRingScale = 80, bagSort = false, mapArrowScale = 150 }
@@ -1452,6 +1459,11 @@ events:SetScript("OnEvent", function(_, event, arg1)
             if not db.runWalkMoved[who] then
                 migrateRunWalk()
                 db.runWalkMoved[who] = true
+            end
+            db.minimapZoomMoved = db.minimapZoomMoved or {}
+            if not db.minimapZoomMoved[who] then
+                migrateMinimapZoom()
+                db.minimapZoomMoved[who] = true
             end
             -- ConsolePortBar loaded first (OptionalDeps), so its own ADDON_LOADED has passed;
             -- its settings are read when the bar is set up at login, so set them now.
