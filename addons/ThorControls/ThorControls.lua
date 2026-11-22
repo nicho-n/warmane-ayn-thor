@@ -18,8 +18,9 @@
 --     DEFAULT_BINDINGS (Select targets a friend, L1 an enemy, Start interacts with
 --     the unit under the pointer; see README).
 -- 11. Eat & Drink: a macro that uses the best food and the best drink in your bags at once,
---     kept up to date out of combat. It starts on action bar slot 12 (D-pad right) if that's
---     empty, and can be dragged anywhere like a spell.
+--     kept up to date out of combat (food that makes you Well Fed is left alone). It starts
+--     on action bar slot 12 (D-pad right) if that's empty, and can be dragged anywhere like
+--     a spell.
 -- 10. DoT timers on nameplates: NotPlater learns each debuff's duration as it goes, so a
 --     debuff it hasn't learned yet had no timer, and mobs dying early taught it shorter
 --     ones. Common DoTs now have a timer from the first cast (in any client language), and
@@ -1852,7 +1853,7 @@ durationFixer:SetScript("OnEvent", fixNotPlaterDurations)
 -- whose name comes from the game, so any client language works: Food, Drink, or Refreshment
 -- (mage food, both at once). The best is the highest required level up to yours; among equals,
 -- the smaller stack, so stacks get used up. /use item:<id> needs no item names either, and
--- #showtooltip with the question-mark icon shows the food's own icon.
+-- #showtooltip with the question-mark icon shows the food's own icon. Well Fed food is skipped.
 local EAT_MACRO = "Eat & Drink"
 local EAT_NONE = "/run DEFAULT_CHAT_FRAME:AddMessage('|cff33ff99Thor Controls|r: no food or drink in your bags.')"
 local eatPending = false
@@ -1884,6 +1885,39 @@ local function consumableSpellNames()
     return food or "Food", drink or "Drink", both
 end
 
+-- Food that makes you Well Fed is kept for raids and the like: its tooltip says you'll become
+-- well fed. "Well Fed" is the buff's name in the client's language (spell 19705); English too.
+local wellFedCache = {}
+local scanTip
+local function givesWellFed(id)
+    if wellFedCache[id] ~= nil then return wellFedCache[id] end
+    if not scanTip then
+        scanTip = CreateFrame("GameTooltip", "ThorControlsScanTip", nil, "GameTooltipTemplate")
+    end
+    scanTip:SetOwner(WorldFrame, "ANCHOR_NONE")
+    scanTip:ClearLines()
+    scanTip:SetHyperlink("item:" .. id)
+    local lines = scanTip:NumLines()
+    if lines == 0 then return false end -- not cached yet: ask again on the next update
+    local words = { "well fed" }
+    local local_ = GetSpellInfo(19705)
+    if local_ then words[2] = local_:lower() end
+    local found = false
+    for i = 2, lines do
+        local region = _G["ThorControlsScanTipTextLeft" .. i]
+        local text = region and region:GetText()
+        if text then
+            text = text:lower()
+            for _, w in ipairs(words) do
+                if text:find(w, 1, true) then found = true end
+            end
+        end
+    end
+    scanTip:Hide()
+    wellFedCache[id] = found
+    return found
+end
+
 local function eatDrinkBody()
     local foodName, drinkName, bothName = consumableSpellNames()
     local level = UnitLevel("player") or 80
@@ -1898,7 +1932,8 @@ local function eatDrinkBody()
         for slot = 1, GetContainerNumSlots(bag) do
             local id = GetContainerItemID(bag, slot)
             local spell = id and GetItemSpell(id)
-            if spell and (spell == foodName or spell == drinkName or spell == bothName) then
+            if spell and (spell == foodName or spell == drinkName or spell == bothName)
+                    and not (spell == foodName and givesWellFed(id)) then
                 local _, _, _, _, minLevel = GetItemInfo(id)
                 minLevel = minLevel or 0
                 if minLevel <= level then
