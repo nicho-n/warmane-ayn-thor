@@ -26,6 +26,8 @@
 --     ones. Common DoTs now have a timer from the first cast (in any client language), and
 --     it keeps the longest.
 -- 12. The minimap clock shows local time (the Thor's time zone), once per account.
+-- 13. Looting and talking leave the cursor alone: ConsolePort turned the camera on there,
+--     so the trackpad moved the camera instead of the cursor.
 --
 -- /thor for status and options.
 
@@ -2014,4 +2016,16 @@ clockEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
 clockEvents:SetScript("OnEvent", function(_, event, name)
     if event == "ADDON_LOADED" and name ~= "Blizzard_TimeManager" then return end
     useLocalClock()
+end)
+
+-- 13. After interacting with a unit (looting, talking), ConsolePort turns on mouselook and
+-- arms a flag that turns the next MouselookStop back into a start, so mouselook stuck and the
+-- trackpad moved the camera instead of the cursor. The app drives the camera itself (the
+-- THORCONTROLS_CAMERALOOK key), so undo that: the first stop clears ConsolePort's flag (and it
+-- restarts mouselook), the second stops it for good. Not while the app's camera key is held.
+-- This hook runs after ConsolePort's (ThorControls loads later).
+hooksecurefunc("InteractUnit", function()
+    if ThorControlsCameraHeld then return end
+    MouselookStop()
+    MouselookStop()
 end)
