@@ -32,6 +32,8 @@ public class WowContainerHelper {
     public static final String CONTROLS_PROFILE_NAME = "WoW ConsolePortLK";
     /** Show upstream's touch-controls overlay on the game screen (WoW Settings). */
     public static final String PREF_TOUCH_CONTROLS = "wow_touch_controls";
+    /** Battery level in the game's top-right corner (on by default). */
+    public static final String PREF_SHOW_BATTERY = "wow_show_battery";
     public static final String GAME_DRIVE_LETTER = "F";
     public static final String DEFAULT_SCREEN_SIZE = "1920x1080";
 

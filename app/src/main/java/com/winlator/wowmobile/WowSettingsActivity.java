@@ -35,6 +35,7 @@ public class WowSettingsActivity extends AppCompatActivity {
     private Spinner sFarclip;
     private ArrayList<String> realmlistItems;
     private CheckBox cbTouchControls;
+    private CheckBox cbBattery;
     private CheckBox cbAutoLogin;
     private EditText etPassword;
     private EditText etAccountName;
@@ -69,6 +70,8 @@ public class WowSettingsActivity extends AppCompatActivity {
 
         cbTouchControls = findViewById(R.id.CBTouchControls);
         cbTouchControls.setChecked(PreferenceManager.getDefaultSharedPreferences(this).getBoolean(WowContainerHelper.PREF_TOUCH_CONTROLS, false));
+        cbBattery = findViewById(R.id.CBBattery);
+        cbBattery.setChecked(PreferenceManager.getDefaultSharedPreferences(this).getBoolean(WowContainerHelper.PREF_SHOW_BATTERY, true));
 
         cbAutoLogin = findViewById(R.id.CBAutoLogin);
         etPassword = findViewById(R.id.ETPassword);
@@ -153,7 +156,8 @@ public class WowSettingsActivity extends AppCompatActivity {
         else host = realmlistItems.get(sRealmlist.getSelectedItemPosition());
 
         PreferenceManager.getDefaultSharedPreferences(this).edit()
-            .putBoolean(WowContainerHelper.PREF_TOUCH_CONTROLS, cbTouchControls.isChecked()).apply();
+            .putBoolean(WowContainerHelper.PREF_TOUCH_CONTROLS, cbTouchControls.isChecked())
+            .putBoolean(WowContainerHelper.PREF_SHOW_BATTERY, cbBattery.isChecked()).apply();
 
         String accountName = etAccountName.getText().toString().trim();
         String password = etPassword.getText().toString();

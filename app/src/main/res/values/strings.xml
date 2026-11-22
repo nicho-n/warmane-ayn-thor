@@ -29,6 +29,8 @@
     <string name="wow_donate">Donate\u0020\u0020☕</string>
     <string name="wow_controls">Controls</string>
     <string name="wow_touch_controls">Show touch controls on the game screen</string>
+    <string name="wow_interface">Interface</string>
+    <string name="wow_show_battery">Show battery level in the top-right corner while in game</string>
     <string name="wow_auto_login">Auto-login</string>
     <string name="wow_auto_login_enable">Type my password on the login screen</string>
     <string name="wow_password_hint">Password</string>

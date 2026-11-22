@@ -25,6 +25,7 @@
 --     debuff it hasn't learned yet had no timer, and mobs dying early taught it shorter
 --     ones. Common DoTs now have a timer from the first cast (in any client language), and
 --     it keeps the longest.
+-- 12. The minimap clock shows local time (the Thor's time zone), once per account.
 --
 -- /thor for status and options.
 
@@ -1993,4 +1994,24 @@ end)
 eatEvents:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_ENABLED" and not eatPending then return end
     eatWait = event == "PLAYER_ENTERING_WORLD" and 2 or 0.3
+end)
+
+-- 12. Local time on the minimap clock, once per account (the clock's own "Use Local Time" option
+-- can turn it back). The app gives the game the Thor's time zone. The setting only exists once
+-- Blizzard_TimeManager has loaded (it registers it), so it's set then.
+local function useLocalClock()
+    if not db or db.localClock2 or not IsAddOnLoaded("Blizzard_TimeManager") then return end
+    SetCVar("timeMgrUseLocalTime", "1")
+    if GetCVar("timeMgrUseLocalTime") ~= "1" then return end -- not registered yet: next time
+    db.localClock2 = true
+    db.localClockSet = nil
+    -- The clock read its settings when it loaded: have it read them again.
+    if type(TimeManager_LoadSettings) == "function" then pcall(TimeManager_LoadSettings) end
+end
+local clockEvents = CreateFrame("Frame")
+clockEvents:RegisterEvent("ADDON_LOADED")
+clockEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
+clockEvents:SetScript("OnEvent", function(_, event, name)
+    if event == "ADDON_LOADED" and name ~= "Blizzard_TimeManager" then return end
+    useLocalClock()
 end)

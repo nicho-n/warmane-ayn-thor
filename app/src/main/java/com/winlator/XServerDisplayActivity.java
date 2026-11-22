@@ -6,6 +6,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.widget.TextView;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.KeyEvent;
@@ -122,6 +123,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private InputControlsManager inputControlsManager;
     private RootFS rootFS;
     private FrameRating frameRating;
+    private android.content.BroadcastReceiver batteryReceiver;
     private Runnable editInputControlsCallback;
     private Shortcut shortcut;
     private String[] graphicsDriver = {GraphicsDrivers.DEFAULT_VULKAN_DRIVER, GraphicsDrivers.DEFAULT_OPENGL_DRIVER};
@@ -364,6 +366,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     @Override
     protected void onDestroy() {
+        if (batteryReceiver != null) {
+            try { unregisterReceiver(batteryReceiver); } catch (IllegalArgumentException ignored) {}
+            batteryReceiver = null;
+        }
         if (bottomScreenPad != null) bottomScreenPad.stop();
         signalHandler.removeCallbacksAndMessages(null);
         app.gamenative.externaldisplay.PadBridge.INSTANCE.setTrackpadTouchListener(null);
@@ -525,6 +531,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         envVars.put("MESA_NO_ERROR", "1");
         envVars.put("WINEPREFIX", rootPath+RootFS.WINEPREFIX);
         envVars.put("WINE_DO_NOT_CREATE_DXGI_DEVICE_MANAGER", "1");
+        // wow-mobile: the rootfs has no zone files, so the game's local time was UTC. Pass the
+        // device's current UTC offset as TZ ("LCL-8" is UTC+8: the sign is hours west of UTC).
+        envVars.put("TZ", posixTimeZone());
 
         boolean enableWineDebug = preferences.getBoolean("enable_wine_debug", false);
         String wineDebugChannels = preferences.getString("wine_debug_channels", SettingsFragment.DEFAULT_WINE_DEBUG_CHANNELS);
@@ -716,6 +725,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 if (profile != null) showInputControls(profile);
             }
         }
+
+        if (preferences.getBoolean(com.winlator.wowmobile.WowContainerHelper.PREF_SHOW_BATTERY, true)) addBatteryBadge(rootView);
 
         if (MainActivity.DEBUG_MODE) rootView.addView(AppUtils.createDebugMsgTextView(this));
         AppUtils.observeSoftKeyboardVisibility(drawerLayout, renderer::setScreenOffsetYRelativeToCursor);
@@ -1330,5 +1341,66 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             return true;
         }
         else return false;
+    }
+
+    /**
+     * The device's current UTC offset as a TZ value both Linux (Wine) and the game's own Windows C
+     * runtime read the same way: a plain 3-letter name and the hours west of UTC, e.g. "LCL-8" for
+     * UTC+8 or "LCL3:30" for UTC-3:30. (A POSIX "<+08>-8" name made the game's runtime read UTC-8.)
+     */
+    static String posixTimeZone() {
+        int offsetMinutes = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000;
+        int abs = Math.abs(offsetMinutes);
+        int hours = abs / 60, minutes = abs % 60;
+        String sign = offsetMinutes > 0 ? "-" : "";
+        return "LCL" + sign + hours + (minutes != 0 ? ":" + String.format(java.util.Locale.ROOT, "%02d", minutes) : "");
+    }
+
+    /**
+     * wow-mobile: the Thor's battery level in the game's top-right corner (next to the minimap's
+     * zone name), small, in WoW's light gold with a shadow (red when low). Touches pass through.
+     * Off in WoW Settings > Interface.
+     * Only in the world: hidden on the login and character screens and while loading (the
+     * WowMobileLink addon sends packets only in the world, several a second).
+     */
+    private void addBatteryBadge(FrameLayout rootView) {
+        final TextView badge = new TextView(this);
+        badge.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10);
+        badge.setTextColor(0xFFFFD100);
+        badge.setTypeface(android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD));
+        float density = getResources().getDisplayMetrics().density;
+        badge.setShadowLayer(1.5f * density, 0f, 1f * density, 0xFF000000);
+        badge.setVisibility(View.GONE);
+        badge.setClickable(false);
+        badge.setFocusable(false);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP | android.view.Gravity.END);
+        params.topMargin = (int)(3 * density);
+        params.rightMargin = (int)(3 * density);
+        rootView.addView(badge, params);
+        badge.post(new Runnable() {
+            @Override
+            public void run() {
+                if (isFinishing() || isDestroyed()) return;
+                boolean atGlue = glueScreens != null && glueScreens.getCurrent() != app.gamenative.externaldisplay.GlueScreenWatcher.Screen.NONE;
+                long since = System.currentTimeMillis() - app.gamenative.externaldisplay.LinkState.INSTANCE.getLastPacketAt();
+                badge.setVisibility(!atGlue && since < 3000 ? View.VISIBLE : View.GONE);
+                badge.postDelayed(this, 1000);
+            }
+        });
+        batteryReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                int level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+                int scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
+                int status = intent.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1);
+                if (level < 0 || scale <= 0) return;
+                int percent = Math.round(level * 100f / scale);
+                boolean charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING || status == android.os.BatteryManager.BATTERY_STATUS_FULL;
+                badge.setText(percent + "%");
+                badge.setTextColor(percent <= 15 && !charging ? 0xFFFF4040 : 0xFFFFD100);
+            }
+        };
+        Intent sticky = registerReceiver(batteryReceiver, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (sticky != null) batteryReceiver.onReceive(this, sticky);
     }
 }
