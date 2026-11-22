@@ -479,6 +479,7 @@ public class ConsolePortController {
     }
 
     private void startTurnAround() {
+        camLog("turn around (left stick held back)");
         turnedAround = true;
         turnReady = false;
         tapCtrlAlt(XKeycode.KEY_F9);
@@ -629,6 +630,7 @@ public class ConsolePortController {
     /** Turns the character to the camera's direction: mouselook with a small nudge (see above). */
     private void faceCamera() {
         if (!cameraKey || orbitMode || pointerMode) return;
+        camLog("face camera (turn the character to the camera's direction)");
         releaseCamera();
         aligning = true;
         applyStickY(lastLy);
@@ -834,11 +836,13 @@ public class ConsolePortController {
                 }
                 if (!pointer && !cameraHeld) {
                     cameraKeyHeld = cameraKey;
-                    // Until something has put the pointer on the game (a touch does), WoW's
-                    // mouselook doesn't re-centre it and the camera spins far too fast. The
-                    // right-mouse camera got this from its button press; the key camera
-                    // moves the pointer to the middle of the screen once instead, no click.
-                    if (cameraKeyHeld && !pointerPlaced) {
+                    // WoW's mouselook measures turning from the middle of the screen: begun with
+                    // the pointer elsewhere (left there by the trackpad, a target tap or pointer
+                    // mode), the camera jumped or spun. So the key camera puts the pointer in
+                    // the middle every time it starts (it's hidden while the camera moves). The
+                    // right-mouse camera got this from its button press.
+                    if (cameraKeyHeld) {
+                        camLog("camera start, pointer at " + xServer.pointer.getX() + "," + xServer.pointer.getY());
                         pointerPlaced = true;
                         xServer.injectPointerMove(xServer.screenInfo.width / 2, xServer.screenInfo.height / 2);
                     }
@@ -852,6 +856,15 @@ public class ConsolePortController {
                 accumX -= dx;
                 accumY -= dy;
                 if (dx != 0 || dy != 0) moveMouse(dx, dy);
+                // Diagnostic: while the key camera is held WoW keeps the pointer in the middle;
+                // far from it, WoW reads one big move.
+                if (cameraHeld && cameraKeyHeld && !farLogged) {
+                    int offX = xServer.pointer.getX() - xServer.screenInfo.width / 2, offY = xServer.pointer.getY() - xServer.screenInfo.height / 2;
+                    if (Math.abs(offX) > 150 || Math.abs(offY) > 150) {
+                        farLogged = true;
+                        camLog("pointer far from the middle while the camera is held: " + offX + "," + offY);
+                    }
+                }
             }
 
             // Keep the right button held briefly after the stick centres, so
@@ -880,7 +893,9 @@ public class ConsolePortController {
 
     private void releaseCamera() {
         if (!cameraHeld) return;
+        camLog("camera release");
         cameraHeld = false;
+        farLogged = false;
         if (cameraLeftHeld) {
             cameraLeftHeld = false;
             if (orbitByKey) xServer.injectKeyRelease(XKeycode.KEY_KP_MULTIPLY);
@@ -899,6 +914,12 @@ public class ConsolePortController {
     private boolean cameraKeyHeld;
     /** The pointer has been put on the game (by a touch or by the first camera move). */
     private boolean pointerPlaced;
+    private boolean farLogged;
+
+    /** Camera diagnostics, in logcat under "CamDbg" (to match up with ThorControls' camera log). */
+    private static void camLog(String text) {
+        android.util.Log.i("CamDbg", text);
+    }
     private boolean wasPlacing;
 
     public void setCameraKey(boolean useKey) {

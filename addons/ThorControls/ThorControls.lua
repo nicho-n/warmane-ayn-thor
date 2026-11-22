@@ -2029,3 +2029,54 @@ hooksecurefunc("InteractUnit", function()
     MouselookStop()
     MouselookStop()
 end)
+
+-- 14. Camera log (diagnostic, for sudden camera spins): when mouselook starts or stops and
+-- who did it (the app's camera key or something else, such as ConsolePort), and any frame where
+-- your facing jumped by a lot. Kept in ThorControlsDB.camLog (the last 300 lines, saved on
+-- logout or /reload, about 30 KB at most). Silent: nothing shows in game.
+local CAM_LOG_MAX = 300
+local function camNote(text)
+    if not db then return end
+    db.camLog = db.camLog or {}
+    local log = db.camLog
+    log[#log + 1] = date("%H:%M:%S") .. string.format(" %.3f ", GetTime()) .. text
+    while #log > CAM_LOG_MAX do table.remove(log, 1) end
+end
+local function caller()
+    -- The first line of the stack outside this file: who called MouselookStart/Stop.
+    for line in (debugstack(3, 6, 0) or ""):gmatch("[^\n]+") do
+        if not line:find("ThorControls\\ThorControls.lua", 1, true) then
+            return (line:gsub("^Interface\\AddOns\\", ""))
+        end
+    end
+    return "?"
+end
+local function cursorOffset()
+    local x, y = GetCursorPosition()
+    local s = UIParent:GetEffectiveScale()
+    return math.floor(x - UIParent:GetWidth() * s / 2), math.floor(y - UIParent:GetHeight() * s / 2)
+end
+hooksecurefunc("MouselookStart", function()
+    local ox, oy = cursorOffset()
+    camNote(string.format("mouselook start by %s, cursor %+d,%+d from middle: %s", ThorControlsCameraHeld and "app" or "OTHER", ox, oy, caller()))
+end)
+hooksecurefunc("MouselookStop", function()
+    camNote("mouselook stop: " .. caller())
+end)
+local lastFacing, lastTurn, camWatch = nil, 0, CreateFrame("Frame")
+camWatch:SetScript("OnUpdate", function(_, elapsed)
+    local facing = GetPlayerFacing and GetPlayerFacing()
+    if not facing then lastFacing = nil return end
+    if lastFacing then
+        local d = facing - lastFacing
+        if d > math.pi then d = d - 2 * math.pi elseif d < -math.pi then d = d + 2 * math.pi end
+        local deg = math.abs(math.deg(d))
+        -- A full-tilt stick turns a few degrees a frame; 45 at once, after a much smaller frame, is a jump.
+        if deg > 45 and deg > lastTurn * 3 then
+            local ox, oy = cursorOffset()
+            camNote(string.format("JUMP %.0f deg in %.0f ms (frame before %.1f deg), mouselook %s, cursor %+d,%+d", deg, elapsed * 1000, lastTurn, IsMouselooking() and "on" or "off", ox, oy))
+        end
+        lastTurn = deg
+    end
+    lastFacing = facing
+end)

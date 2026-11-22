@@ -2,7 +2,7 @@
 ## Title: Thor Controls
 ## Notes: Makes ConsolePortLK work with the Warmane Ayn Thor Launcher's controller mapping, plus layout fixes for the Thor. Type /thor for options.
 ## Author: nicho-n
-## Version: 1.77
+## Version: 1.78
 ## OptionalDeps: ConsolePort, ConsolePortBar
 ## SavedVariables: ThorControlsDB
 
