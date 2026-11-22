@@ -58,6 +58,8 @@ public class WowMobileActivity extends AppCompatActivity {
         AppUtils.setActivityTheme(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.wow_main_activity);
+        // Full screen: no Android status bar over the backdrop (a swipe from the edge shows it for a moment).
+        com.winlator.core.AppUtils.hideSystemUI(this);
 
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
 
@@ -334,7 +336,11 @@ public class WowMobileActivity extends AppCompatActivity {
         super.onWindowFocusChanged(hasFocus);
         // Focus asked for before the window had it doesn't show: ask again now, so Play is
         // highlighted from the start and it's clear A starts the game.
-        if (hasFocus) btPlay.post(this::focusPlay);
+        if (hasFocus) {
+            // Dialogs and other apps can bring the bars back: hide them again.
+            com.winlator.core.AppUtils.hideSystemUI(this);
+            btPlay.post(this::focusPlay);
+        }
     }
 
     /** Shows the focus border on Play, so it's clear A starts the game. */
